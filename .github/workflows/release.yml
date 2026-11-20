@@ -95,6 +95,12 @@ jobs:
         with:
           path: dist
 
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          find . -type f -exec sha256sum {} + | sed 's|^\./||' > checksums.txt
+          cat checksums.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
