@@ -22,15 +22,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-14, windows-latest]
         include:
           - os: ubuntu-latest
             bin_suffix: ""
             bin_name: mesh-thumb-linux-x86_64
             artifact: mesh-thumb-linux
-          - os: macos-latest
+          # macos-14 is the arm64 runner; pinned explicitly so the build
+          # stays predictable even if `macos-latest` changes architecture.
+          # The universal binary is produced by lipo-ing the arm64 and
+          # x86_64 slices (x86_64 built via a rustup target on the same
+          # runner — no Intel runner needed).
+          - os: macos-14
             bin_suffix: ""
-            bin_name: mesh-thumb-macos-x86_64
+            bin_name: mesh-thumb-macos-universal
             artifact: mesh-thumb-macos
           - os: windows-latest
             bin_suffix: ".exe"
@@ -43,6 +48,10 @@ jobs:
       - name: Install Rust toolchain
         run: rustup default stable
 
+      - name: Install x86_64 Apple target (macOS universal slice)
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin
+
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -53,24 +62,41 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build release binary
+      - name: Build release binary (Linux/Windows native)
+        if: runner.os != 'macOS'
         run: cargo build --release --bin mesh-thumb
 
-      - name: Smoke test
-        shell: bash
-        run: |
-          BIN="$PWD/target/release/mesh-thumb${{ matrix.bin_suffix }}"
-          "$BIN" capabilities
-          "$BIN" --version
-          "$BIN" render fixtures/cube_ascii.stl -o /tmp/cube.png
-          test -s /tmp/cube.png
+      - name: Build arm64 slice (macOS)
+        if: runner.os == 'macOS'
+        run: cargo build --release --bin mesh-thumb --target aarch64-apple-darwin
+
+      - name: Build x86_64 slice (macOS)
+        if: runner.os == 'macOS'
+        run: cargo build --release --bin mesh-thumb --target x86_64-apple-darwin
 
       - name: Stage artifact under its release name
         shell: bash
         run: |
           mkdir -p dist
-          mv "target/release/mesh-thumb${{ matrix.bin_suffix }}" \
-             "dist/${{ matrix.bin_name }}"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            lipo -create \
+              "target/aarch64-apple-darwin/release/mesh-thumb" \
+              "target/x86_64-apple-darwin/release/mesh-thumb" \
+              -output "dist/${{ matrix.bin_name }}"
+            file "dist/${{ matrix.bin_name }}"
+          else
+            mv "target/release/mesh-thumb${{ matrix.bin_suffix }}" \
+               "dist/${{ matrix.bin_name }}"
+          fi
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          BIN="$PWD/dist/${{ matrix.bin_name }}"
+          "$BIN" capabilities
+          "$BIN" --version
+          "$BIN" render fixtures/cube_ascii.stl -o "$PWD/cube.png"
+          test -s "$PWD/cube.png"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

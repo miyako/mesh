@@ -3,3 +3,9 @@
 *.tmp
 .tmp/
 .cargo-home/
+
+# release staging (CI + local universal-binary builds)
+dist/
+
+# local workaround for sandboxed HOME (read-only ~/.rustup)
+.rustup-home/
