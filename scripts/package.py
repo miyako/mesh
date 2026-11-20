@@ -195,7 +195,9 @@ def package(binary, target, output):
         raise ValueError("asset already exists; use a new output directory")
     create_archive(archive, files, executable)
     sidecar.write_bytes(files["manifest.json"])
-    checksum.write_text(f"{sha256(archive.read_bytes())}  {archive.name}\n", encoding="ascii", newline="\n")
+    # Raw bytes: guarantees the canonical "hexdigest  name.zip\n" line on every
+    # platform (text-mode newline translation differs on Windows).
+    checksum.write_bytes(f"{sha256(archive.read_bytes())}  {archive.name}\n".encode("ascii"))
     return archive
 
 
