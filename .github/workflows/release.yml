@@ -32,6 +32,7 @@ jobs:
             bin_suffix: ""
             bin_name: mesh-thumb-linux-x86_64
             artifact: mesh-thumb-linux
+            package_target: ""
           # macos-latest currently = macOS arm64. Host arch does not
           # matter here: both slices are `--target`-explicit cross-builds
           # (.cargo builds aarch64/x86_64 on any macOS host), and the
@@ -44,16 +45,27 @@ jobs:
             bin_suffix: ""
             bin_name: mesh-thumb-macos-universal
             artifact: mesh-thumb-macos
+            package_target: universal-apple-darwin
+            python_cmd: python3
           - os: windows-latest
             bin_suffix: ".exe"
             bin_name: mesh-thumb-windows-x86_64.exe
             artifact: mesh-thumb-windows
+            package_target: x86_64-pc-windows-msvc
+            python_cmd: python
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        run: rustup default stable
+        # Pinned to match scripts/package.py's rustc assertion and the
+        # documented local toolchain; ZIP packaging refuses other compilers.
+        run: rustup default 1.100.0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Install x86_64 Apple target (macOS universal slice)
         if: runner.os == 'macOS'
@@ -112,6 +124,37 @@ jobs:
           path: dist/${{ matrix.bin_name }}
           if-no-files-found: error
 
+      # Deterministic release ZIPs (quickdraw-cli asset model): the whole
+      # archive is what the 4D component pins via cli/asset-lock.json.
+      - name: Package deterministic release ZIP
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ matrix.python_cmd }}" scripts/package.py \
+            --binary "dist/${{ matrix.bin_name }}" \
+            --target "${{ matrix.package_target }}" \
+            --output dist/zips
+
+      - name: Verify packaged ZIP
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$("${{ matrix.python_cmd }}" -c "import tomllib;print(tomllib.load(open('Cargo.toml','rb'))['package']['version'])")
+          "${{ matrix.python_cmd }}" scripts/verify_asset.py \
+            "dist/zips/mesh-thumb-v${VERSION}-${{ matrix.package_target }}.zip" \
+            --target "${{ matrix.package_target }}" \
+            --sha256 "$(awk '{print $1}' "dist/zips/mesh-thumb-v${VERSION}-${{ matrix.package_target }}.zip.sha256")"
+
+      - name: Upload release ZIP and sidecars
+        if: runner.os != 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-zips
+          path: dist/zips/*
+          if-no-files-found: error
+
   release:
     name: publish GitHub release
     needs: build
@@ -133,6 +176,17 @@ jobs:
           cd dist
           find . -type f -exec sha256sum {} + | sed 's|^\./||' > checksums.txt
           cat checksums.txt
+
+      - name: Assert tag matches Cargo version
+        # Tag runs only; package.py already refuses to build mismatched
+        # binaries, this blocks a release page for a stale tag.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION=$(python3 -c "import tomllib;print(tomllib.load(open('Cargo.toml','rb'))['package']['version'])")
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${VERSION}"
+            exit 1
+          fi
 
       - name: Create Release
         # Tag runs only: a manual dispatch from a branch must not create

@@ -144,7 +144,7 @@ Human mode prints an inventory; `--json` emits:
 ```json
 {
   "app": "mesh-thumb",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "formats": ["stl", "ply"],
   "views": ["iso", "top", "front", "side"],
   "backends": ["auto", "cpu"],
