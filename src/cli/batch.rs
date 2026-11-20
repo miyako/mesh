@@ -2,7 +2,7 @@
 //! processed independently; per-file errors are collected and reported
 //! without aborting the rest (unless `--abort-on-error`), per spec §14.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -42,12 +42,28 @@ pub struct BatchResult {
     pub failed: usize,
 }
 
-/// Render one item (also used by the future threaded runner).
+/// Output path for one batch input: `<out_dir>/<stem>.png`, with the
+/// same `resolve_output` rules the render path uses.
+fn batch_output_path(input: &Path, out_dir: &Path) -> PathBuf {
+    let joined = out_dir.join(
+        input
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+            + ".png",
+    );
+    resolve_output(input, Some(&joined))
+}
+
+/// Render one item. `out` is the precomputed output path (see
+/// `batch_output_path`), resolved once up front so the collision check
+/// and the write agree.
 fn render_one(
     input: &Path,
+    out: &Path,
     opts: &RenderOptions,
     cache: &Cache,
-    out_dir: &Path,
 ) -> std::result::Result<BatchItemResult, Error> {
     let data = read_file_limited(input)?;
     let input_hash = content_hash(&data);
@@ -68,20 +84,7 @@ fn render_one(
     };
     crate::render::image::validate_png_bytes(&png_bytes)?;
 
-    let out = resolve_output(
-        input,
-        Some(
-            &out_dir.join(
-                input
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned()
-                    + ".png",
-            ),
-        ),
-    );
-    write_atomic(&out, &png_bytes)?;
+    write_atomic(out, &png_bytes)?;
 
     Ok(BatchItemResult {
         input: input.to_string_lossy().into_owned(),
@@ -112,12 +115,49 @@ fn failure_item(input: &Path, e: &Error) -> BatchItemResult {
 /// configured limits (default 4, max 16). Per-file errors are collected
 /// without aborting the rest, unless `--abort-on-error` is set (in which
 /// case the first fatal error is returned and remaining work is stopped).
+///
+/// Output collisions are rejected up front: two inputs whose stems map to
+/// the same `<out_dir>/<stem>.png` (e.g. `a/cube.stl` + `b/cube.stl`) would
+/// otherwise overwrite each other with a nondeterministic winner under
+/// concurrency, so the whole batch fails with `batch_error` before any
+/// file is written.
 pub fn execute(args: &BatchArgs) -> Result<Option<Response>> {
     let opts = args
         .render
         .to_options()
         .map_err(|m| Error::new(ErrorCode::InvalidRenderOption, m))?;
     let concurrency = limits::DEFAULT_BATCH_CONCURRENCY.clamp(1, limits::MAX_BATCH_CONCURRENCY);
+
+    let n = args.files.len();
+    // Resolve every output path up front; same path twice = collision.
+    let mut out_paths: Vec<PathBuf> = Vec::with_capacity(n);
+    let mut first_with: std::collections::HashMap<PathBuf, usize> =
+        std::collections::HashMap::new();
+    let mut collisions: Vec<String> = Vec::new();
+    for (i, input) in args.files.iter().enumerate() {
+        let out = batch_output_path(input, &args.out);
+        match first_with.get(&out) {
+            Some(&first) => collisions.push(format!(
+                "inputs '{}' and '{}' both map to '{}'",
+                args.files[first].display(),
+                input.display(),
+                out.display()
+            )),
+            None => {
+                first_with.insert(out.clone(), i);
+            }
+        }
+        out_paths.push(out);
+    }
+    if !collisions.is_empty() {
+        return Err(Error::new(
+            ErrorCode::BatchError,
+            format!(
+                "batch output collision: {} (re-run with distinct stems or --out)",
+                collisions.join("; ")
+            ),
+        ));
+    }
 
     std::fs::create_dir_all(&args.out).map_err(|e| Error::io(&args.out, &e))?;
 
@@ -127,7 +167,6 @@ pub fn execute(args: &BatchArgs) -> Result<Option<Response>> {
         Cache::open(args.cache_dir.as_deref())
     };
 
-    let n = args.files.len();
     let next = std::sync::atomic::AtomicUsize::new(0);
     let abort = std::sync::atomic::AtomicBool::new(false);
     let first_error: std::sync::Mutex<Option<Error>> = std::sync::Mutex::new(None);
@@ -145,8 +184,7 @@ pub fn execute(args: &BatchArgs) -> Result<Option<Response>> {
                 if i >= n {
                     return;
                 }
-                let input = &args.files[i];
-                let item = match render_one(input, &opts, &cache, &args.out) {
+                let item = match render_one(&args.files[i], &out_paths[i], &opts, &cache) {
                     Ok(item) => item,
                     Err(e) => {
                         if args.abort_on_error {
@@ -156,7 +194,7 @@ pub fn execute(args: &BatchArgs) -> Result<Option<Response>> {
                                 *slot = Some(e.clone());
                             }
                         }
-                        failure_item(input, &e)
+                        failure_item(&args.files[i], &e)
                     }
                 };
                 items.lock().unwrap()[i] = Some(item);

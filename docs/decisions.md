@@ -97,3 +97,13 @@ Without `--json`, the CLI prints short human text: results to stdout,
 structured envelope on stdout — including failures, which print a
 `schema_version/success/error` object and still exit 1. Stdout stays
 parseable in both cases.
+
+## D11. Batch output collisions fail the whole batch up front
+
+Two inputs whose stems map to the same `<out_dir>/<stem>.png`
+(`a/cube.stl` + `b/cube.stl`) are a `batch_error` before any work runs —
+never a silent last-write-wins race. Under a worker pool the overwrite
+winner would be nondeterministic, so the only honest options are fail or
+disambiguate; failing with a clear message (and a JSON envelope) keeps
+the tool deterministic. An empty batch is a clap usage error (exit 2),
+not a silent no-op.

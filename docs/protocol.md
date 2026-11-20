@@ -75,7 +75,7 @@ is 1:
 | `backend_unavailable` | `--backend gpu` on the CPU-only MVP |
 | `output_error` | Could not write the output PNG |
 | `usage_error` | Reserved for usage problems surfaced by commands |
-| `batch_error` | Reserved for batch-level failures |
+| `batch_error` | Batch-level failure, e.g. output collisions (`a/cube.stl` + `b/cube.stl` both mapping to `out/cube.png`) |
 
 ## Result shapes
 
@@ -144,6 +144,14 @@ Human mode prints an inventory; `--json` emits:
 
 Items are reported in input order. With `--abort-on-error`, the first
 failure stops the batch, `items` is not emitted, and exit code is 1.
+
+**Output collisions are rejected up front.** Inputs whose stems map to the
+same `<out_dir>/<stem>.png` fail the whole batch with `batch_error`
+(exit 1) before any file is written — under concurrency the overwrite
+winner would be nondeterministic, so `a/cube.stl` + `b/cube.stl` together
+is an error, not a last-write-wins race. An empty batch
+(`mesh-thumb batch --out dir`) with no files is a clap usage error
+(exit 2).
 
 ## Versioning contract
 

@@ -390,6 +390,60 @@ fn batch_abort_on_error_exits_1() {
 }
 
 #[test]
+fn batch_zero_files_is_usage_error() {
+    // clap's `required = true` on <FILE>... makes an empty batch a usage
+    // error (exit 2) rather than a silent no-op.
+    let out = temp("batch_empty_out");
+    let o = run(&["batch", "--out", &out.to_string_lossy()]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(
+        stderr(&o).contains("following required arguments"),
+        "got: {}",
+        stderr(&o)
+    );
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
+fn batch_rejects_output_collisions_before_working() {
+    // Two inputs with the same stem would silently overwrite one output
+    // (nondeterministic winner under concurrency) — the batch must fail
+    // up front with a batch_error and leave the output dir untouched.
+    let work = temp("batch_col_work");
+    std::fs::create_dir_all(work.join("a")).unwrap();
+    std::fs::create_dir_all(work.join("b")).unwrap();
+    let a = work.join("a/cube.stl");
+    let b = work.join("b/cube.stl");
+    std::fs::copy(fixture("cube_ascii.stl"), &a).unwrap();
+    std::fs::copy(fixture("cube_ascii.stl"), &b).unwrap();
+    let out = temp("batch_col_out");
+    let o = run(&[
+        "batch",
+        "--json",
+        "--out",
+        &out.to_string_lossy(),
+        &a.to_string_lossy(),
+        &b.to_string_lossy(),
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&o)).unwrap();
+    assert_eq!(v["success"], false);
+    assert_eq!(v["error"]["code"], "batch_error");
+    assert!(
+        v["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("collision"),
+        "got: {}",
+        v["error"]["message"]
+    );
+    // Nothing may have been rendered into the output directory.
+    assert_eq!(std::fs::read_dir(&out).map(|d| d.count()).unwrap_or(0), 0);
+    let _ = std::fs::remove_dir_all(&work);
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
 fn batch_concurrent_with_shared_cache() {
     // Distinct-named inputs (realistic batch) sharing one cache: stresses
     // the threaded runner against the atomic cache (unique temp files,
