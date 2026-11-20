@@ -107,3 +107,16 @@ winner would be nondeterministic, so the only honest options are fail or
 disambiguate; failing with a clear message (and a JSON envelope) keeps
 the tool deterministic. An empty batch is a clap usage error (exit 2),
 not a silent no-op.
+## D12. Performance work must not change pixels (golden refs enforce)
+
+renderer keeps the golden reference images in `tests/golden/ref/` pinned
+pixel-for-pixel; a deleted/never-written reference is regenerated and
+reviewed, but byte-equal output is the gate for any shader/raster change.
+Consequence: the flat-shading "fast path" (using `normals[0]` directly
+when all three vertex normals are equal, skipping the barycentric
+interpolate+normalize) is NOT used — barycentric floats rarely sum to
+exactly 1.0, so `w0*n+w1*n+w2*n` before normalization is not
+bit-identical to `n`, which flips enough matcap texel selections to move
+~30k channels (measured). Optimizations instead hoist work that is
+bit-identical by construction, e.g. per-vertex normal orientation
+precomputed once (O(V)) instead of per triangle vertex (O(3T)).

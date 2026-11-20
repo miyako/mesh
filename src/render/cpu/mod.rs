@@ -93,33 +93,76 @@ pub fn render_mesh(
     let _ = &mut warnings;
 
     if let Some(normals) = &mesh.normals {
-        // Interpolate vertex normals; fall back to face normal if any
-        // vertex normal is degenerate.
+        // Per-vertex classification, computed once per vertex instead of
+        // per-vertex-per-triangle (a smooth mesh re-normalizes and orients
+        // the same vertex normal for every triangle sharing it).
+        //   Ok(n)   -> normalized vertex normal (use as-is, oriented)
+        //   Face    -> non-normalizable but above the length gate (infinite
+        //              components): the triangle falls back to its own
+        //              face normal at this vertex, exactly as before
+        //   Deg     -> below the length gate: forces the flat branch
+        #[derive(Clone, Copy)]
+        enum VNormal {
+            Ok(Vec3),
+            Face,
+            Deg,
+        }
+        let vertex_normals: Vec<VNormal> = normals
+            .iter()
+            .map(|nv| {
+                if nv.length_squared() > 1e-12 {
+                    match nv.try_normalize() {
+                        Some(n) => VNormal::Ok(n),
+                        None => VNormal::Face,
+                    }
+                } else {
+                    VNormal::Deg
+                }
+            })
+            .collect();
+        let orient_for = |n: Vec3| orient_toward_camera(n, scene.view_forward).normal;
+
         for (i, tri) in mesh.triangles.iter().enumerate() {
             let Some(face_normal) = face_normals[i] else {
                 continue;
             };
-            let base = [
-                mesh.positions[tri[0] as usize],
-                mesh.positions[tri[1] as usize],
-                mesh.positions[tri[2] as usize],
-            ];
-            let mut vn = [(Vec3::ZERO, false); 3];
-            for (k, idx) in tri.iter().enumerate() {
-                let nv = normals[*idx as usize];
-                if nv.length_squared() > 1e-12 {
-                    vn[k] = (nv.try_normalize().unwrap_or(face_normal), true);
+            let (ai, bi, ci) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+            let base = [mesh.positions[ai], mesh.positions[bi], mesh.positions[ci]];
+            let (va, vb, vc) = (vertex_normals[ai], vertex_normals[bi], vertex_normals[ci]);
+            let oriented: [Vec3; 3] = if matches!(va, VNormal::Deg | VNormal::Face)
+                || matches!(vb, VNormal::Deg | VNormal::Face)
+                || matches!(vc, VNormal::Deg | VNormal::Face)
+            {
+                // Any below-gate share degrades the whole triangle to flat.
+                if matches!(va, VNormal::Deg)
+                    || matches!(vb, VNormal::Deg)
+                    || matches!(vc, VNormal::Deg)
+                {
+                    let on = orient_for(face_normal);
+                    [on; 3]
+                } else {
+                    // Above-gate but non-normalizable: mixed interpolation
+                    // using the triangle face normal at those vertices.
+                    [
+                        match va {
+                            VNormal::Ok(n) => orient_for(n),
+                            _ => orient_for(face_normal),
+                        },
+                        match vb {
+                            VNormal::Ok(n) => orient_for(n),
+                            _ => orient_for(face_normal),
+                        },
+                        match vc {
+                            VNormal::Ok(n) => orient_for(n),
+                            _ => orient_for(face_normal),
+                        },
+                    ]
                 }
-            }
-            let oriented: [Vec3; 3] = if vn.iter().all(|(_, ok)| *ok) {
-                [
-                    orient_toward_camera(vn[0].0, scene.view_forward).normal,
-                    orient_toward_camera(vn[1].0, scene.view_forward).normal,
-                    orient_toward_camera(vn[2].0, scene.view_forward).normal,
-                ]
             } else {
-                let on = orient_toward_camera(face_normal, scene.view_forward).normal;
-                [on; 3]
+                let VNormal::Ok(na) = va else { unreachable!() };
+                let VNormal::Ok(nb) = vb else { unreachable!() };
+                let VNormal::Ok(nc) = vc else { unreachable!() };
+                [orient_for(na), orient_for(nb), orient_for(nc)]
             };
 
             let colors = mesh.colors.as_ref().map(|cs| {

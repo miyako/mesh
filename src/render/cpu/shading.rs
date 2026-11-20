@@ -9,6 +9,12 @@ use crate::render::matcap::{shade_with_albedo, Matcap, NEUTRAL_ALBEDO};
 /// Shade a fragment given barycentric weights. Flat normals (all three
 /// identical) fall out naturally.
 pub fn shade_triangle(matcap: &Matcap, shading: &TriAttrs, w0: f32, w1: f32, w2: f32) -> Color {
+    // Note: the interpolation + normalize below is deliberately NOT
+    // short-circuited when all three normals are equal (flat shading).
+    // Barycentric floats rarely sum to exactly 1.0, so
+    // `w0*n + w1*n + w2*n` before normalization is not bit-identical to
+    // `n`; using `n` directly flips enough matcap texel selections to
+    // change pixels (golden refs are the pixel contract — docs D12).
     let n = Vec3::new(
         w0 * shading.normals[0].x + w1 * shading.normals[1].x + w2 * shading.normals[2].x,
         w0 * shading.normals[0].y + w1 * shading.normals[1].y + w2 * shading.normals[2].y,
