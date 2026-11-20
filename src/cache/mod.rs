@@ -20,6 +20,7 @@
 pub mod key;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -57,10 +58,16 @@ impl Manifest {
 
 /// The render cache handle. `enabled: false` when `--no-cache` is given
 /// or no cache dir was provided.
+///
+/// Thread-safety: [`Cache::get`]/[`Cache::put`] are safe to call from
+/// concurrent worker threads (batch mode). Reads/writes of `manifest.json`
+/// are serialized through an internal mutex; blob temp files use unique
+/// names so concurrent writers never collide.
 #[derive(Debug, Clone)]
 pub struct Cache {
     dir: Option<PathBuf>,
     enabled: bool,
+    manifest_lock: Arc<std::sync::Mutex<()>>,
 }
 
 impl Cache {
@@ -70,19 +77,18 @@ impl Cache {
             Some(d) => Cache {
                 dir: Some(d.to_path_buf()),
                 enabled: true,
+                manifest_lock: Arc::new(std::sync::Mutex::new(())),
             },
             None => Cache {
                 dir: None,
                 enabled: false,
+                manifest_lock: Arc::new(std::sync::Mutex::new(())),
             },
         }
     }
 
     pub fn disabled() -> Cache {
-        Cache {
-            dir: None,
-            enabled: false,
-        }
+        Cache::open(None)
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -125,7 +131,10 @@ impl Cache {
         if !self.enabled {
             return None;
         }
-        let manifest = self.load_manifest();
+        let manifest = {
+            let _guard = self.manifest_lock.lock().ok()?;
+            self.load_manifest()
+        };
         let entry = manifest.entries.get(cache_key)?;
         let path = self.blob_path(cache_key);
         let bytes = std::fs::read(&path).ok()?;
@@ -155,9 +164,17 @@ impl Cache {
             )
         })?;
 
-        // Atomic blob write: temp -> rename.
+        // Atomic blob write: temp -> rename. Unique temp name so concurrent
+        // writers (batch mode) never share a temp path.
         let blob = self.blob_path(cache_key);
-        let tmp = dir.join("blobs").join(format!(".{cache_key}.tmp"));
+        static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dir.join("blobs").join(format!(
+            ".{}.{}.{:x}.tmp",
+            cache_key,
+            std::process::id(),
+            seq
+        ));
         {
             let mut f = std::fs::File::create(&tmp).map_err(|e| {
                 Error::new(
@@ -182,7 +199,14 @@ impl Cache {
             )
         })?;
 
-        // Update manifest.
+        // Manifest update is serialized so no concurrent reader sees a
+        // torn/half-updated manifest.
+        let _guard = self.manifest_lock.lock().map_err(|_| {
+            Error::new(
+                crate::diagnostics::error::ErrorCode::CacheError,
+                "manifest lock poisoned",
+            )
+        })?;
         let mut manifest = self.load_manifest();
         manifest.entries.insert(
             cache_key.to_string(),

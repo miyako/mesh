@@ -94,14 +94,30 @@ fn render_one(
     })
 }
 
+fn failure_item(input: &Path, e: &Error) -> BatchItemResult {
+    BatchItemResult {
+        input: input.to_string_lossy().into_owned(),
+        ok: false,
+        output: None,
+        width: None,
+        height: None,
+        cache: None,
+        error: Some(ErrorJson::from(e)),
+    }
+}
+
 /// Run `batch`. Returns the JSON response when `--json`.
+///
+/// Files are rendered concurrently on a worker pool sized by the
+/// configured limits (default 4, max 16). Per-file errors are collected
+/// without aborting the rest, unless `--abort-on-error` is set (in which
+/// case the first fatal error is returned and remaining work is stopped).
 pub fn execute(args: &BatchArgs) -> Result<Option<Response>> {
     let opts = args
         .render
         .to_options()
         .map_err(|m| Error::new(ErrorCode::InvalidRenderOption, m))?;
-    let concurrency = limits::DEFAULT_BATCH_CONCURRENCY.min(limits::MAX_BATCH_CONCURRENCY);
-    let _ = concurrency; // sequential MVP; threaded runner in a later phase
+    let concurrency = limits::DEFAULT_BATCH_CONCURRENCY.clamp(1, limits::MAX_BATCH_CONCURRENCY);
 
     std::fs::create_dir_all(&args.out).map_err(|e| Error::io(&args.out, &e))?;
 
@@ -111,33 +127,52 @@ pub fn execute(args: &BatchArgs) -> Result<Option<Response>> {
         Cache::open(args.cache_dir.as_deref())
     };
 
-    let mut items = Vec::with_capacity(args.files.len());
-    let mut ok = 0usize;
-    for input in &args.files {
-        match render_one(input, &opts, &cache, &args.out) {
-            Ok(item) => {
-                if item.ok {
-                    ok += 1;
+    let n = args.files.len();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let abort = std::sync::atomic::AtomicBool::new(false);
+    let first_error: std::sync::Mutex<Option<Error>> = std::sync::Mutex::new(None);
+    let items: std::sync::Mutex<Vec<Option<BatchItemResult>>> =
+        std::sync::Mutex::new((0..n).map(|_| None).collect());
+
+    std::thread::scope(|scope| {
+        for _ in 0..concurrency.min(n.max(1)) {
+            scope.spawn(|| loop {
+                use std::sync::atomic::Ordering;
+                if abort.load(Ordering::Relaxed) {
+                    return;
                 }
-                items.push(item);
-            }
-            Err(e) => {
-                if args.abort_on_error {
-                    return Err(e);
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= n {
+                    return;
                 }
-                items.push(BatchItemResult {
-                    input: input.to_string_lossy().into_owned(),
-                    ok: false,
-                    output: None,
-                    width: None,
-                    height: None,
-                    cache: None,
-                    error: Some(ErrorJson::from(&e)),
-                });
-            }
+                let input = &args.files[i];
+                let item = match render_one(input, &opts, &cache, &args.out) {
+                    Ok(item) => item,
+                    Err(e) => {
+                        if args.abort_on_error {
+                            abort.store(true, Ordering::Relaxed);
+                            let mut slot = first_error.lock().unwrap();
+                            if slot.is_none() {
+                                *slot = Some(e.clone());
+                            }
+                        }
+                        failure_item(input, &e)
+                    }
+                };
+                items.lock().unwrap()[i] = Some(item);
+            });
+        }
+    });
+
+    if args.abort_on_error {
+        if let Some(e) = first_error.into_inner().unwrap() {
+            return Err(e);
         }
     }
 
+    let collected = items.into_inner().unwrap();
+    let items: Vec<BatchItemResult> = collected.into_iter().flatten().collect();
+    let ok = items.iter().filter(|it| it.ok).count();
     let failed = items.len() - ok;
     let result = BatchResult {
         items,

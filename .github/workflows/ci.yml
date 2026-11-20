@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup default stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Lint (deny warnings)
+        run: cargo clippy --all-targets
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Test
+        # Golden image tests run in compare mode here: the committed
+        # tests/golden/ref/*.png must match current renderer output.
+        run: cargo test --all-targets
+
+  # Clippy, tests and benches already covered above; this job validates
+  # that the release artifact builds without the dev tooling.
+  release:
+    name: release-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup default stable
+      - name: Build release binary
+        run: cargo build --release --bin mesh-thumb
+      - name: Smoke test
+        run: |
+          ./target/release/mesh-thumb capabilities
+          ./target/release/mesh-thumb --help | head -5

@@ -24,6 +24,7 @@ pub const EXIT_ERROR: i32 = 1;
 /// Run the CLI from `std::env::args`. Returns the process exit code.
 pub fn main_entry() -> i32 {
     let cli = Cli::parse();
+    let want_json = cli.wants_json();
     match dispatch(cli) {
         Ok(None) => EXIT_OK,
         Ok(Some(response)) => {
@@ -31,6 +32,12 @@ pub fn main_entry() -> i32 {
             EXIT_OK
         }
         Err(e) => {
+            if want_json {
+                // Structured error envelope on stdout for programmatic
+                // consumers; the human-readable message still goes to
+                // stderr and the exit code is 1.
+                print_json(&json::Response::err(&e));
+            }
             eprintln!(
                 "mesh-thumb: {}",
                 crate::diagnostics::error::ErrorReport::from(&e)

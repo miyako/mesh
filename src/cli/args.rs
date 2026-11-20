@@ -22,6 +22,20 @@ pub struct Cli {
     pub command: Command,
 }
 
+impl Cli {
+    /// Whether the selected subcommand requested JSON output. Used so a
+    /// failing command can still emit a structured JSON error envelope to
+    /// stdout (in addition to the human message on stderr).
+    pub fn wants_json(&self) -> bool {
+        match &self.command {
+            Command::Render(a) => a.json,
+            Command::Inspect(a) => a.json,
+            Command::Capabilities(a) => a.json,
+            Command::Batch(a) => a.json,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 pub enum Command {
     /// Render one input file to a PNG thumbnail.

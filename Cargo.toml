@@ -18,6 +18,12 @@ path = "src/lib.rs"
 name = "mesh-thumb"
 path = "src/main.rs"
 
+# Plain, self-timed benchmark binary (custom main; no libtest harness).
+[[bench]]
+name = "render_bench"
+path = "benches/render_bench.rs"
+harness = false
+
 [dependencies]
 blake3 = "1.5"
 clap = { version = "4.5", features = ["derive"] }

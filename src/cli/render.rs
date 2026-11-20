@@ -71,7 +71,11 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "out".to_string());
-    let tmp = dir.join(format!(".{stem}.tmp{}", std::process::id()));
+    // Unique temp name so concurrent writers (batch mode) never share a
+    // temp path, even when multiple inputs map to the same output.
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dir.join(format!(".{stem}.tmp{}.{:x}", std::process::id(), seq));
     {
         let mut f = std::fs::File::create(&tmp).map_err(|e| Error::io(&tmp, &e))?;
         f.write_all(bytes).map_err(|e| Error::io(&tmp, &e))?;
