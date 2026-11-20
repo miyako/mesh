@@ -77,6 +77,20 @@ identical renders are cache hits *before parsing* the file. The cache is
 safe to share across concurrent batch workers and degrades gracefully if
 corrupted. See [docs/decisions.md](docs/decisions.md).
 
+### Performance caveats
+
+Rendering is single-threaded per file and CPU-bound. Supersampling
+(`--quality`) dominates cost: each level multiplies the rasterization
+work by 4 (quality 4 = 16× the quality-1 sample count). Expect a few
+milliseconds for small meshes at default settings and roughly linear
+growth with vertex/face count; very large meshes are truncated under the
+resource limits reported by `capabilities` (see
+[docs/security.md](docs/security.md)). `batch` fans files out across 4
+workers (configurable up to 16) to use multiple cores; per-file renders
+are single-core by design so thumbnails stay byte-deterministic. Timing
+baselines live in [docs/decisions.md](docs/decisions.md) (benchmarked
+with `cargo bench`).
+
 ## Documentation
 
 - [cli.md](docs/cli.md) — user-facing manual: every command, option, exit code
