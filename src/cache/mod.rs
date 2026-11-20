@@ -47,6 +47,18 @@ pub struct Manifest {
     pub entries: std::collections::HashMap<String, ManifestEntry>,
 }
 
+/// Result of a [`Cache::prune`] pass.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PruneStats {
+    /// Manifest entries removed (their blobs were deleted too).
+    pub entries_pruned: usize,
+    /// Blob files not referenced by any manifest entry (removed).
+    pub orphan_blobs_removed: usize,
+    /// Bytes freed by deleted blob files.
+    pub bytes_freed: u64,
+}
+
 impl Manifest {
     pub fn empty() -> Manifest {
         Manifest {
@@ -217,7 +229,13 @@ impl Cache {
                 created_ms: crate::versions::now_epoch_ms(),
             },
         );
-        let json = serde_json::to_vec_pretty(&manifest).map_err(|e| {
+        self.replace_manifest(&manifest)
+    }
+
+    /// Atomically replace `manifest.json` (temp file + rename).
+    fn replace_manifest(&self, manifest: &Manifest) -> Result<()> {
+        let dir = self.dir.as_ref().expect("enabled cache has dir");
+        let json = serde_json::to_vec_pretty(manifest).map_err(|e| {
             Error::new(
                 crate::diagnostics::error::ErrorCode::CacheError,
                 format!("serialize manifest: {e}"),
@@ -249,6 +267,78 @@ impl Cache {
             )
         })?;
         Ok(())
+    }
+
+    /// Delete every manifest entry older than `cutoff_ms` (epoch
+    /// milliseconds, exclusive) and every blob file not referenced by the
+    /// manifest. The manifest is rewritten atomically when anything was
+    /// removed. Unlike lookups/writes (which degrade to a miss), cache
+    /// problems are surfaced as errors here because pruning is an
+    /// explicit user command.
+    pub fn prune(&self, cutoff_ms: u64) -> Result<PruneStats> {
+        if !self.enabled {
+            return Ok(PruneStats::default());
+        }
+        let dir = self.dir.as_ref().expect("enabled cache has dir");
+        if !dir.is_dir() {
+            return Err(Error::new(
+                crate::diagnostics::error::ErrorCode::CacheError,
+                format!("cache directory does not exist: {}", dir.display()),
+            ));
+        }
+        // Serialize against concurrent render writes so we never prune a
+        // half-written state.
+        let _guard = self.manifest_lock.lock().map_err(|_| {
+            Error::new(
+                crate::diagnostics::error::ErrorCode::CacheError,
+                "manifest lock poisoned",
+            )
+        })?;
+        let mut manifest = self.load_manifest();
+        let mut stats = PruneStats::default();
+
+        // 1. Expired entries (blob + manifest row).
+        let expired: Vec<String> = manifest
+            .entries
+            .iter()
+            .filter(|(_, e)| e.created_ms < cutoff_ms)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in &expired {
+            if let Ok(meta) = std::fs::metadata(self.blob_path(key)) {
+                stats.bytes_freed += meta.len();
+            }
+            let _ = std::fs::remove_file(self.blob_path(key));
+            manifest.entries.remove(key);
+            stats.entries_pruned += 1;
+        }
+
+        // 2. Orphan blobs (files not referenced by any entry).
+        let blobs_dir = dir.join("blobs");
+        if let Ok(entries) = std::fs::read_dir(&blobs_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                // Skip temp files (our own atomic-write staging).
+                if name.starts_with('.') || !name.ends_with(".png") {
+                    continue;
+                }
+                let key = name.trim_end_matches(".png").to_string();
+                if manifest.entries.contains_key(&key) {
+                    continue;
+                }
+                if let Ok(meta) = entry.metadata() {
+                    stats.bytes_freed += meta.len();
+                }
+                let _ = std::fs::remove_file(entry.path());
+                stats.orphan_blobs_removed += 1;
+            }
+        }
+
+        if stats.entries_pruned > 0 || stats.orphan_blobs_removed > 0 {
+            self.replace_manifest(&manifest)?;
+        }
+        Ok(stats)
     }
 }
 
@@ -303,5 +393,66 @@ mod tests {
         cache.put("k", "h", "s", b"12345678").unwrap();
         std::fs::write(cache.blob_path("k"), b"SHORT").unwrap();
         assert_eq!(cache.get("k"), None);
+    }
+
+    #[test]
+    fn prune_drops_expired_keeps_fresh() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(Some(dir.path()));
+        cache.put("old", "h1", "s1", b"aaaa").unwrap();
+        cache.put("new", "h2", "s2", b"bbbb").unwrap();
+        // Backdate "old" so it is clearly expired.
+        {
+            let path = cache.manifest_path();
+            let mut m: Manifest = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            m.entries.get_mut("old").unwrap().created_ms = 1000;
+            std::fs::write(&path, serde_json::to_vec(&m).unwrap()).unwrap();
+        }
+        // Cutoff one hour in the future: "old" (ms 1000) is pruned,
+        // "new" (created moments ago) survives deterministically.
+        // Cutoff at the fresh entry's own timestamp: "old" (ms 1000) is
+        // strictly below it and pruned; "new" is not and survives. Uses
+        // only manifest data, so it is independent of wall-clock skew.
+        let fresh_ms = {
+            let m: Manifest =
+                serde_json::from_slice(&std::fs::read(cache.manifest_path()).unwrap()).unwrap();
+            m.entries.get("new").unwrap().created_ms
+        };
+        let stats = cache.prune(fresh_ms).unwrap();
+        assert_eq!(stats.entries_pruned, 1);
+        assert_eq!(stats.orphan_blobs_removed, 0);
+        assert_eq!(stats.bytes_freed, 4);
+        assert_eq!(cache.get("old"), None);
+        assert_eq!(cache.get("new"), Some(b"bbbb".to_vec()));
+        // The manifest no longer lists "old".
+        let m: Manifest =
+            serde_json::from_slice(&std::fs::read(cache.manifest_path()).unwrap()).unwrap();
+        assert!(!m.entries.contains_key("old"));
+    }
+
+    #[test]
+    fn prune_removes_orphans_and_keeps_dotfiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(Some(dir.path()));
+        cache.put("k", "h", "s", b"data").unwrap();
+        std::fs::write(dir.path().join("blobs").join("orphan.png"), b"stray").unwrap();
+        std::fs::write(dir.path().join("blobs").join(".tmpstaging"), b"x").unwrap();
+        let stats = cache.prune(u64::MAX).unwrap();
+        assert_eq!(stats.entries_pruned, 1);
+        assert_eq!(stats.orphan_blobs_removed, 1);
+        assert!(!dir.path().join("blobs").join("orphan.png").exists());
+        assert!(dir.path().join("blobs").join(".tmpstaging").exists());
+        // Second pass is a no-op.
+        let stats = cache.prune(u64::MAX).unwrap();
+        assert_eq!(stats.entries_pruned, 0);
+        assert_eq!(stats.orphan_blobs_removed, 0);
+    }
+
+    #[test]
+    fn prune_missing_dir_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        let cache = Cache::open(Some(&missing));
+        assert!(cache.prune(u64::MAX).is_err());
     }
 }

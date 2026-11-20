@@ -32,6 +32,7 @@ impl Cli {
             Command::Inspect(a) => a.json,
             Command::Capabilities(a) => a.json,
             Command::Batch(a) => a.json,
+            Command::Cache(a) => a.wants_json(),
         }
     }
 }
@@ -46,6 +47,8 @@ pub enum Command {
     Capabilities(CapabilitiesArgs),
     /// Render many files to a directory (per-file errors).
     Batch(BatchArgs),
+    /// Manage the render cache (prune).
+    Cache(CacheArgs),
 }
 
 /// Shared render options used by `render` and `batch`.
@@ -115,7 +118,8 @@ impl RenderOptionsArgs {
 /// Options common to commands that read a single input file.
 #[derive(Args, Debug, Clone)]
 pub struct InputArgs {
-    /// Input file (STL or PLY).
+    /// Input file (STL or PLY). Use `-` to read from stdin (`render`
+    /// then requires -o/--output; `batch` does not accept `-`).
     #[arg(value_name = "FILE")]
     pub input: PathBuf,
 }
@@ -189,6 +193,54 @@ pub struct BatchArgs {
     pub abort_on_error: bool,
 
     /// Emit JSON result for the whole batch.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `cache` subcommand: cache maintenance.
+#[derive(Args, Debug, Clone)]
+pub struct CacheArgs {
+    #[command(subcommand)]
+    pub action: CacheAction,
+}
+
+impl CacheArgs {
+    pub fn wants_json(&self) -> bool {
+        match &self.action {
+            CacheAction::Prune(a) => a.json,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum CacheAction {
+    /// Remove old entries and orphan blob files.
+    Prune(PruneArgs),
+}
+
+/// `cache prune` arguments. Exactly one of `--all` / `--older-than`
+/// must be given (each is required unless the other is present, and
+/// they conflict with each other).
+#[derive(Args, Debug, Clone)]
+pub struct PruneArgs {
+    /// Cache directory (same as render/batch --cache-dir).
+    #[arg(long, value_name = "DIR", required = true)]
+    pub dir: PathBuf,
+
+    /// Remove entries older than N days.
+    #[arg(
+        long,
+        value_name = "DAYS",
+        required_unless_present = "all",
+        conflicts_with = "all"
+    )]
+    pub older_than: Option<u64>,
+
+    /// Remove every entry and all orphan blobs.
+    #[arg(long, required_unless_present = "older_than")]
+    pub all: bool,
+
+    /// Emit JSON to stdout.
     #[arg(long)]
     pub json: bool,
 }

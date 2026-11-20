@@ -12,12 +12,41 @@ mesh-thumb render [--json] [options] <FILE> [-o PNG] [--cache-dir DIR] [--no-cac
 mesh-thumb inspect [--json] <FILE>
 mesh-thumb capabilities [--json]
 mesh-thumb batch [--json] [--abort-on-error] --out DIR [--cache-dir DIR] [--no-cache] <FILE>...
+mesh-thumb cache prune [--json] --dir DIR (--all | --older-than DAYS)
 ```
 
 Shared render options: `--size N` (square) or `--width/--height`,
 `--view iso|top|front|side`, `--background #RRGGBB|transparent`,
 `--quality N` (supersampling 1..8), `--point-size PX`,
 `--backend auto|cpu|gpu`.
+
+### Reading geometry from stdin
+
+For `render` and `inspect`, `<FILE>` may be `-` to read the geometry
+bytes from stdin (format detection and limits apply to the piped
+bytes; the diagnostics `path` is `-`). Rules:
+
+- `batch` never accepts `-` (it needs a filesystem path per input);
+  passing `-` to batch is a normal file-not-found error.
+- `render -` requires `-o/--output` (there is no input path to derive
+  a default output name from); omitting it is an error (exit 1,
+  `invalid_render_option`).
+- Programmatic consumers: stdin bytes are hashed for the cache key
+  exactly like file bytes, so a piped render and a file render of the
+  same bytes share cache entries.
+- stdout is reserved for results (JSON when `--json`, the plain result
+  otherwise); PNG bytes are never written to stdout (the `-o -` form
+  is intentionally unsupported; see docs/decisions D13).
+
+### `cache prune`
+
+Maintenance for a cache directory created by `--cache-dir`. Deletes
+every manifest entry older than the cutoff (`--older-than DAYS`, whole
+days, exclusive) or every entry (`--all`), plus any blob files not
+referenced by the manifest (orphans). Dot-files in `blobs/` (atomic
+write staging) are never touched. The manifest is atomically rewritten
+when anything was removed. Exactly one of `--all` / `--older-than` must
+be given; giving neither or both is a clap usage error (exit 2).
 
 ## Exit codes
 
@@ -70,7 +99,7 @@ is 1:
 | `invalid_geometry` | Parsed to no usable geometry (empty) |
 | `resource_limit_exceeded` | Input size, counts, or framebuffer over limits |
 | `invalid_render_option` | Bad option value (size/quality/view/...) |
-| `cache_error` | Cache I/O problem (always degrades to a miss) |
+| `cache_error` | Cache I/O problem (lookups/writes degrade to a miss; `cache prune` reports it as a real error) |
 | `png_encode_error` | PNG encode/validation failure |
 | `backend_unavailable` | `--backend gpu` on the CPU-only MVP |
 | `output_error` | Could not write the output PNG |
@@ -152,6 +181,22 @@ winner would be nondeterministic, so `a/cube.stl` + `b/cube.stl` together
 is an error, not a last-write-wins race. An empty batch
 (`mesh-thumb batch --out dir`) with no files is a clap usage error
 (exit 2).
+
+### `cache prune` result
+
+Human mode prints `pruned N entries, removed M orphan blobs, freed B
+bytes (cache: DIR)`. `--json` emits:
+
+```json
+{
+  "cache_dir": "/tmp/cache",
+  "entries_pruned": 2,
+  "orphan_blobs_removed": 1,
+  "bytes_freed": 48219
+}
+```
+
+A second run reports all zeros (idempotent).
 
 ## Versioning contract
 

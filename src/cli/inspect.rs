@@ -1,13 +1,15 @@
 //! `inspect` subcommand: report format, counts, and bounds without
 //! rendering.
 
+use std::path::Path;
+
 use serde::Serialize;
 
 use crate::cli::args::InspectArgs;
 use crate::cli::json::{InputInfo, Response, WarningsJson};
 use crate::cli::render::geometry_summary;
 use crate::diagnostics::error::Result;
-use crate::formats::load::load_geometry;
+use crate::formats::load::{is_stdin_path, load_bytes, read_stdin_limited};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -19,10 +21,21 @@ pub struct InspectResult {
 
 /// Run `inspect`. Returns the JSON response when `--json`.
 pub fn execute(args: &InspectArgs) -> Result<Option<Response>> {
-    let loaded = load_geometry(&args.input.input)?;
+    // `-` inspects geometry piped on stdin (cannot be re-read, so the
+    // bytes are loaded once and parsed in memory).
+    let (loaded, input_ref): (_, &Path) = if is_stdin_path(&args.input.input) {
+        let loaded = load_bytes(read_stdin_limited()?, Path::new("-"))?;
+        (loaded, Path::new("-"))
+    } else {
+        let loaded = load_bytes(
+            crate::formats::load::read_file_limited(&args.input.input)?,
+            args.input.input.as_path(),
+        )?;
+        (loaded, args.input.input.as_path())
+    };
     let geometry = geometry_summary(&loaded.geometry);
     let result = InspectResult {
-        input: InputInfo::from_loaded(&args.input.input, &loaded.format, loaded.file_size),
+        input: InputInfo::from_loaded(input_ref, &loaded.format, loaded.file_size),
         geometry,
         warnings: WarningsJson::from(&loaded.warnings),
     };

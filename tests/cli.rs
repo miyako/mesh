@@ -26,6 +26,24 @@ fn run(args: &[&str]) -> Output {
         .expect("failed to spawn mesh-thumb binary")
 }
 
+fn run_with_stdin(args: &[&str], input: &[u8]) -> Output {
+    use std::io::Write;
+    let mut child = Command::new(bin())
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn mesh-thumb binary");
+    child
+        .stdin
+        .take()
+        .expect("stdin piped")
+        .write_all(input)
+        .expect("write stdin");
+    child.wait_with_output().expect("wait for mesh-thumb")
+}
+
 fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).into_owned()
 }
@@ -175,6 +193,59 @@ fn render_is_deterministic_without_cache() {
     );
     let _ = std::fs::remove_file(&a);
     let _ = std::fs::remove_file(&b);
+}
+
+// ---------- stdin input (`-`) ----------
+
+#[test]
+fn render_stdin_matches_file_render_byte_for_byte() {
+    let fixture_bytes = std::fs::read(fixture("cube_ascii.stl")).unwrap();
+    let file_out = temp("stdin_file.png");
+    let stdin_out = temp("stdin_pipe.png");
+    let o = run(&[
+        "render",
+        &fixture("cube_ascii.stl").to_string_lossy(),
+        "-o",
+        &file_out.to_string_lossy(),
+    ]);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    let o = run_with_stdin(
+        &["render", "-", "-o", &stdin_out.to_string_lossy()],
+        &fixture_bytes,
+    );
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert_eq!(png_bytes(&file_out), png_bytes(&stdin_out));
+    let _ = std::fs::remove_file(&file_out);
+    let _ = std::fs::remove_file(&stdin_out);
+}
+
+#[test]
+fn render_stdin_requires_output_path() {
+    let fixture_bytes = std::fs::read(fixture("cube_ascii.stl")).unwrap();
+    let o = run_with_stdin(&["render", "-"], &fixture_bytes);
+    assert_eq!(o.status.code(), Some(1), "stderr: {}", stderr(&o));
+    assert!(stderr(&o).contains("output path"), "stderr: {}", stderr(&o));
+}
+
+#[test]
+fn render_stdin_accepts_binary_stl() {
+    let fixture_bytes = std::fs::read(fixture("tri_binary.stl")).unwrap();
+    let out = temp("stdin_binary.png");
+    let o = run_with_stdin(
+        &["render", "-", "-o", &out.to_string_lossy()],
+        &fixture_bytes,
+    );
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert_eq!(png_dimensions(&png_bytes(&out)), (256, 256));
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn inspect_stdin_reports_format() {
+    let fixture_bytes = std::fs::read(fixture("cube_ascii.stl")).unwrap();
+    let o = run_with_stdin(&["inspect", "-"], &fixture_bytes);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert!(stdout(&o).contains("stl_ascii"), "stdout: {}", stdout(&o));
 }
 
 // ---------- render --json ----------
@@ -342,6 +413,177 @@ fn cache_misses_then_hits() {
     let _ = std::fs::remove_dir_all(&cache);
     let _ = std::fs::remove_file(&out1);
     let _ = std::fs::remove_file(&out2);
+}
+
+#[test]
+fn prune_all_empties_cache() {
+    let cache = temp("prune_cache");
+    let out = temp("prune_out.png");
+    let o = run(&[
+        "render",
+        "--cache-dir",
+        &cache.to_string_lossy(),
+        &fixture("cube_ascii.stl").to_string_lossy(),
+        "-o",
+        &out.to_string_lossy(),
+    ]);
+    assert_eq!(o.status.code(), Some(0));
+    let o = run(&["cache", "prune", "--dir", &cache.to_string_lossy(), "--all"]);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert!(
+        stdout(&o).contains("pruned 1 entries"),
+        "got: {}",
+        stdout(&o)
+    );
+    assert_eq!(
+        std::fs::read_dir(cache.join("blobs")).unwrap().count(),
+        0,
+        "blobs dir should be empty after --all"
+    );
+    let _ = std::fs::remove_dir_all(&cache);
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn prune_removes_orphan_blobs() {
+    let cache = temp("prune_orphan_cache");
+    let out = temp("prune_orphan_out.png");
+    run(&[
+        "render",
+        "--cache-dir",
+        &cache.to_string_lossy(),
+        &fixture("cube_ascii.stl").to_string_lossy(),
+        "-o",
+        &out.to_string_lossy(),
+    ]);
+    std::fs::create_dir_all(cache.join("blobs")).unwrap();
+    std::fs::write(cache.join("blobs").join("deadbeef.png"), b"stray").unwrap();
+    // Dot-files (atomic-write staging) must never be pruned.
+    std::fs::write(cache.join("blobs").join(".staging.tmp"), b"x").unwrap();
+    let o = run(&["cache", "prune", "--dir", &cache.to_string_lossy(), "--all"]);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert!(
+        stdout(&o).contains("removed 1 orphan blobs"),
+        "got: {}",
+        stdout(&o)
+    );
+    assert!(!cache.join("blobs").join("deadbeef.png").exists());
+    assert!(cache.join("blobs").join(".staging.tmp").exists());
+    let _ = std::fs::remove_dir_all(&cache);
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn prune_older_than_removes_only_old_entries() {
+    let cache = temp("prune_old_cache");
+    let out = temp("prune_old_out.png");
+    run(&[
+        "render",
+        "--cache-dir",
+        &cache.to_string_lossy(),
+        &fixture("cube_ascii.stl").to_string_lossy(),
+        "-o",
+        &out.to_string_lossy(),
+    ]);
+    // Backdate the single entry so it looks a year old.
+    let manifest_path = cache.join("manifest.json");
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    for entry in v["entries"].as_object_mut().unwrap().values_mut() {
+        entry["created_ms"] = serde_json::json!(1000u64);
+    }
+    std::fs::write(&manifest_path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
+    let o = run(&[
+        "cache",
+        "prune",
+        "--dir",
+        &cache.to_string_lossy(),
+        "--older-than",
+        "1",
+    ]);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    assert!(
+        stdout(&o).contains("pruned 1 entries"),
+        "got: {}",
+        stdout(&o)
+    );
+    let o = run(&["cache", "prune", "--dir", &cache.to_string_lossy(), "--all"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        stdout(&o).contains("pruned 0 entries"),
+        "got: {}",
+        stdout(&o)
+    );
+    let _ = std::fs::remove_dir_all(&cache);
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn prune_missing_dir_is_error() {
+    let missing = temp("prune_missing").join("nope");
+    let o = run(&[
+        "cache",
+        "prune",
+        "--dir",
+        &missing.to_string_lossy(),
+        "--all",
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(stderr(&o).contains("does not exist"), "got: {}", stderr(&o));
+}
+
+#[test]
+fn prune_requires_exactly_one_policy_flag() {
+    let cache = temp("prune_usage_cache");
+    // Neither --all nor --older-than: usage error.
+    let o = run(&["cache", "prune", "--dir", &cache.to_string_lossy()]);
+    assert_eq!(o.status.code(), Some(2), "stderr: {}", stderr(&o));
+    // Both together: usage error.
+    let o = run(&[
+        "cache",
+        "prune",
+        "--dir",
+        &cache.to_string_lossy(),
+        "--all",
+        "--older-than",
+        "1",
+    ]);
+    assert_eq!(o.status.code(), Some(2), "stderr: {}", stderr(&o));
+    let _ = std::fs::remove_dir_all(&cache);
+}
+
+#[test]
+fn prune_json_reports_stats() {
+    let cache = temp("prune_json_cache");
+    let out = temp("prune_json_out.png");
+    run(&[
+        "render",
+        "--cache-dir",
+        &cache.to_string_lossy(),
+        &fixture("cube_ascii.stl").to_string_lossy(),
+        "-o",
+        &out.to_string_lossy(),
+    ]);
+    let o = run(&[
+        "cache",
+        "prune",
+        "--json",
+        "--dir",
+        &cache.to_string_lossy(),
+        "--all",
+    ]);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&o)).unwrap();
+    assert_eq!(v["success"], true);
+    assert_eq!(v["result"]["entries_pruned"], 1);
+    assert_eq!(v["result"]["orphan_blobs_removed"], 0);
+    assert!(v["result"]["bytes_freed"].as_u64().unwrap() > 0);
+    assert_eq!(
+        v["result"]["cache_dir"],
+        cache.to_string_lossy().into_owned()
+    );
+    let _ = std::fs::remove_dir_all(&cache);
+    let _ = std::fs::remove_file(&out);
 }
 
 // ---------- batch ----------

@@ -120,3 +120,27 @@ bit-identical to `n`, which flips enough matcap texel selections to move
 ~30k channels (measured). Optimizations instead hoist work that is
 bit-identical by construction, e.g. per-vertex normal orientation
 precomputed once (O(V)) instead of per triangle vertex (O(3T)).
+
+## D13. Stdin geometry input (`-`); stdout stays reserved
+
+`render` and `inspect` accept `-` as the input file to read geometry
+bytes from stdin (batch does not: it needs filesystem stems). There is
+no default output name for piped input, so `render -` requires
+`-o/--output` (a runtime error, not a clap error, because the flag is
+valid — just mandatory here). PNG bytes are never written to stdout:
+the `-o -` form is intentionally unsupported, because stdout carries
+the command's result (human or JSON envelope) and the spec reserves
+stdout for protocol data. Piped bytes are hashed for the cache key
+identically to file bytes, so both routes share entries.
+
+## D14. Cache pruning is age-based plus orphan cleanup
+
+`cache prune` removes manifest entries by creation age (`--older-than
+DAYS`, exclusive) or everything (`--all`) and deletes blob files not
+referenced by the manifest. There is deliberately no LRU/eviction-on-
+write and no size budget: the cache is content-addressed and bounded by
+the input set in practice, and the spec's backlog asks for an explicit
+clearCache operation, not background pressure. Dot-files in `blobs/`
+(the atomic-write staging suffix) are never pruned. Unlike lookups and
+writes — which degrade to a miss on I/O trouble — prune is an explicit
+user command and surfaces cache errors (`cache_error`, exit 1).

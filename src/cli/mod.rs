@@ -3,6 +3,7 @@
 
 pub mod args;
 pub mod batch;
+pub mod cache;
 pub mod capabilities;
 pub mod inspect;
 pub mod json;
@@ -53,6 +54,9 @@ fn dispatch(cli: Cli) -> Result<Option<json::Response>> {
         Command::Inspect(a) => inspect::execute(&a),
         Command::Capabilities(a) => capabilities::execute(&a),
         Command::Batch(a) => batch::execute(&a),
+        Command::Cache(a) => match a.action {
+            crate::cli::args::CacheAction::Prune(p) => cache::execute_prune(&p),
+        },
     }
 }
 

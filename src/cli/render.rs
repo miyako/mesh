@@ -10,7 +10,7 @@ use crate::cache::Cache;
 use crate::cli::args::RenderArgs;
 use crate::cli::json::{self, GeometrySummary, InputInfo, Response, WarningsJson};
 use crate::diagnostics::error::{Error, ErrorCode, Result};
-use crate::formats::load::{load_geometry, read_file_limited};
+use crate::formats::load::read_file_limited;
 
 /// Result payload of a render.
 #[derive(Debug, Clone, Serialize)]
@@ -99,7 +99,22 @@ pub fn execute(args: &RenderArgs) -> Result<Option<Response>> {
         .render
         .to_options()
         .map_err(|m| Error::new(ErrorCode::InvalidRenderOption, m))?;
-    let out_path = resolve_output(&args.input.input, args.output.as_deref());
+
+    // `-` reads geometry from stdin; the output path is then mandatory
+    // (the default `<stdin>.png` would be meaningless).
+    let from_stdin = crate::formats::load::is_stdin_path(&args.input.input);
+    if from_stdin && args.output.is_none() {
+        return Err(Error::new(
+            ErrorCode::InvalidRenderOption,
+            "an output path (-o/--output) is required when reading from stdin",
+        ));
+    }
+    let input_ref: &Path = if from_stdin {
+        Path::new("-")
+    } else {
+        args.input.input.as_path()
+    };
+    let out_path = resolve_output(input_ref, args.output.as_deref());
 
     let cache = if args.no_cache || args.cache_dir.is_none() {
         Cache::disabled()
@@ -108,7 +123,11 @@ pub fn execute(args: &RenderArgs) -> Result<Option<Response>> {
     };
 
     // 1. Read raw bytes (bounded) and hash for the cache key.
-    let data = read_file_limited(&args.input.input)?;
+    let data = if from_stdin {
+        crate::formats::load::read_stdin_limited()?
+    } else {
+        read_file_limited(input_ref)?
+    };
     let input_hash = content_hash(&data);
     let settings = opts.settings_string();
     let key = cache_key(&input_hash, &settings);
@@ -119,7 +138,7 @@ pub fn execute(args: &RenderArgs) -> Result<Option<Response>> {
         cache_status = "hit";
         hit
     } else {
-        let loaded = load_geometry(&args.input.input)?;
+        let loaded = crate::formats::load::load_bytes(data.clone(), input_ref)?;
         let output = crate::render::render(loaded.geometry, &opts)?;
         if cache.is_enabled() {
             // Best-effort store; a cache failure is never fatal.
@@ -132,14 +151,14 @@ pub fn execute(args: &RenderArgs) -> Result<Option<Response>> {
     crate::render::image::validate_png_bytes(&png_bytes)?;
     write_atomic(&out_path, &png_bytes)?;
 
-    // 4. Diagnostics summary (a light parse for counts; cheap relative
-    //    to rendering, and required for inspect-style output).
-    let loaded = load_geometry(&args.input.input)?;
+    // 4. Diagnostics summary (from the same bytes when input is stdin,
+    //    whose stream cannot be re-read).
+    let loaded = crate::formats::load::load_bytes(data, input_ref)?;
     let geometry = geometry_summary(&loaded.geometry);
     let render_ms = started.elapsed().as_millis() as u64;
 
     let result = RenderResult {
-        input: InputInfo::from_loaded(&args.input.input, &loaded.format, loaded.file_size),
+        input: InputInfo::from_loaded(input_ref, &loaded.format, loaded.file_size),
         output: out_path.to_string_lossy().into_owned(),
         width: opts.width,
         height: opts.height,
@@ -155,7 +174,7 @@ pub fn execute(args: &RenderArgs) -> Result<Option<Response>> {
     }
     println!(
         "rendered {} -> {} ({}x{}, {} vertices, cache: {})",
-        args.input.input.display(),
+        input_ref.display(),
         out_path.display(),
         opts.width,
         opts.height,
