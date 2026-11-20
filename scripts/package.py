@@ -18,8 +18,12 @@ import re
 import struct
 import subprocess
 import sys
-import tomllib
 import zipfile
+
+try:  # Python 3.11+; CI runs 3.11+, older local hosts use the `tomli` backport
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercise with the backport installed
+    import tomli as tomllib  # type: ignore[no-redef]
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGETS = {
