@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "initialized": true,
+  "repository": "MeshPreviewThumbnailer",
+  "namespace": "MeshPreview",
+  "cli": "mesh-thumb",
+  "language": "rust",
+  "feature": "Deterministic STL/PLY thumbnail rendering",
+  "version": "0.1.0"
+}
