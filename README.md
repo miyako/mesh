@@ -94,6 +94,20 @@ cargo bench                       # render timing benchmarks
 CI (`.github/workflows/ci.yml`) runs fmt/clippy/test/bench on Ubuntu and
 macOS with `-D warnings`.
 
+## Releasing
+
+Tag a release and push the tag; `.github/workflows/release.yml` builds
+release binaries on Linux, macOS and Windows, smoke-tests them, and
+attaches them to a GitHub Release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Run `cargo package --list` before tagging to sanity-check the crate
+contents for crates.io.
+
 ## Scope
 
 This project intentionally does *not* implement: materials/textures,
