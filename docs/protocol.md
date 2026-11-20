@@ -5,6 +5,9 @@ Stable, machine-readable contract for `mesh-thumb`. Schema version is
 human-readable CLI never prints to stdout anything that is not the
 command's result; diagnostics go to stderr.
 
+For the user-facing manual (every command and option) see
+[cli.md](cli.md); this file is the contract programmers rely on.
+
 ## Command surface
 
 ```

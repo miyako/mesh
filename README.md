@@ -79,11 +79,14 @@ corrupted. See [docs/decisions.md](docs/decisions.md).
 
 ## Documentation
 
+- [cli.md](docs/cli.md) — user-facing manual: every command, option, exit code
 - [architecture.md](docs/architecture.md) — module map and render pipeline
 - [format-support.md](docs/format-support.md) — what parses, what renders, honest limits
 - [decisions.md](docs/decisions.md) — why things are the way they are
 - [security.md](docs/security.md) — threat model and resource limits
 - [protocol.md](docs/protocol.md) — CLI + JSON contract, error codes, versioning
+- [wrapper.md](docs/wrapper.md) — Phase 6 `MeshPreview.Thumbnailer` wrapper contract
+- [acceptance.md](docs/acceptance.md) — spec §26 acceptance checklist + phase gates
 
 ## Development
 

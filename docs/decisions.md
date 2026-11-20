@@ -144,3 +144,18 @@ clearCache operation, not background pressure. Dot-files in `blobs/`
 (the atomic-write staging suffix) are never pruned. Unlike lookups and
 writes — which degrade to a miss on I/O trouble — prune is an explicit
 user command and surfaces cache errors (`cache_error`, exit 1).
+
+## D15. Phase 6 wrapper: contract here, component in the 4D repo
+
+The `MeshPreview.Thumbnailer` wrapper (spec §22) is a 4D component and
+lives in the 4D component repository following the existing
+`quickdraw` / `4d-component-template` conventions — not in this Rust
+repo, which has no 4D toolchain or framework context. What this repo
+owns is the *contract* the wrapper consumes (`docs/wrapper.md`) and
+the release artifacts (§23.2), so Phase 6's gate ("a 4D project can
+call render/inspect without external downloads") is decoupled from
+CLI work here. The wrapper starts after the CLI contract is stable;
+**additive** CLI changes are allowed after that point because the
+wrapper parses the schema-versioned JSON envelope and checks
+`schema_version` (protocol.md), and additive options never change
+existing result fields.
