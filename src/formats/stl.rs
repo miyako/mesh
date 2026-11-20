@@ -295,8 +295,12 @@ fn parse_ascii_tokens(
     if !*saw_any_structure {
         return Err(stl_ascii_error("no 'facet' structure found"));
     }
-    if matches!(st, State::OuterLoop | State::FacetNormal) {
-        return Err(stl_ascii_error("unterminated facet"));
+    // Any state other than Scan means the last facet was not closed
+    // (`endfacet`/`endsolid` never arrived): error rather than silently
+    // dropping its vertices. A file that merely omits the trailing
+    // `endsolid` but closes its last facet ends in Scan and is accepted.
+    if !matches!(st, State::Scan) {
+        return Err(stl_ascii_error("unterminated facet at end of file"));
     }
     finalize_mesh(
         mesh,
@@ -432,6 +436,92 @@ mod tests {
                     vertex 0 0 0\nvertex 0 1 0\nvertex 0 1 1\nendloop\nendfacet\nendsolid x\n";
         let m = parse_ascii(text.as_bytes()).unwrap();
         assert_eq!(m.triangles.len(), 2);
+    }
+
+    #[test]
+    fn ascii_crlf_accepted() {
+        // Windows line endings: `\r\n` everywhere. split_whitespace treats
+        // `\r` as whitespace, so this must parse to the same mesh as LF.
+        let text = "solid cube\r\nfacet normal 0 0 1\r\nouter loop\r\n\
+                    vertex 0 0 0\r\nvertex 1 0 0\r\nvertex 0 1 0\r\n\
+                    endloop\r\nendfacet\r\nendsolid cube\r\n";
+        let m = parse_ascii(text.as_bytes()).unwrap();
+        assert_eq!(m.triangles.len(), 1);
+        assert_eq!(
+            m.positions,
+            [
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0)
+            ]
+        );
+    }
+
+    #[test]
+    fn ascii_utf8_bom_tolerated() {
+        // Some exporters prepend a UTF-8 BOM; it is not a token by itself
+        // and the leading `solid` line is skipped in Scan state anyway.
+        let text = "\u{feff}solid cube\nfacet normal 0 0 1\nouter loop\n\
+                    vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n\
+                    endloop\nendfacet\nendsolid cube\n";
+        let m = parse_ascii(text.as_bytes()).unwrap();
+        assert_eq!(m.triangles.len(), 1);
+    }
+
+    #[test]
+    fn ascii_missing_endsolid_accepted() {
+        // Real-world ASCII STL frequently omits the trailing `endsolid`
+        // line; a fully closed last facet must still be accepted.
+        let text = "solid cube\nfacet normal 0 0 1\nouter loop\n\
+                    vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n\
+                    endloop\nendfacet\n";
+        let m = parse_ascii(text.as_bytes()).unwrap();
+        assert_eq!(m.triangles.len(), 1);
+    }
+
+    #[test]
+    fn ascii_truncated_final_facet_rejected() {
+        // EOF in the middle of the last facet must be an error, not a
+        // silent drop of the uncommitted triangle.
+        let cases = [
+            // three vertices, no `endloop`
+            "solid x\nfacet normal 0 0 1\nouter loop\n\
+             vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n",
+            // endloop but no endfacet
+            "solid x\nfacet normal 0 0 1\nouter loop\n\
+             vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\n",
+            // only two vertices
+            "solid x\nfacet normal 0 0 1\nouter loop\n\
+             vertex 0 0 0\nvertex 1 0 0\n",
+        ];
+        for text in cases {
+            assert!(
+                parse_ascii(text.as_bytes()).is_err(),
+                "expected error for unterminated facet: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ascii_trailing_garbage_after_endsolid_ignored() {
+        // Content after `endsolid` (e.g. appended notes or junk) is never
+        // consumed; the mesh is the finished one.
+        let text = "solid x\nfacet normal 0 0 1\nouter loop\n\
+                    vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n\
+                    endloop\nendfacet\nendsolid x\n\
+                    this is not part of the solid \u{a0}\u{1}\u{ff}";
+        let m = parse_ascii(text.as_bytes()).unwrap();
+        assert_eq!(m.triangles.len(), 1);
+    }
+
+    #[test]
+    fn ascii_scientific_notation_coordinates() {
+        let text = "solid x\nfacet normal 0 0 1\nouter loop\n\
+                    vertex 0e0 0 0\nvertex 1.0e0 0 0\nvertex 0E0 1E0 0\n\
+                    endloop\nendfacet\nendsolid x\n";
+        let m = parse_ascii(text.as_bytes()).unwrap();
+        assert_eq!(m.triangles.len(), 1);
+        assert_eq!(m.positions[2], Vec3::new(0.0, 1.0, 0.0));
     }
 
     #[test]

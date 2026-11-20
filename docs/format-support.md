@@ -17,7 +17,15 @@ STL/PLY") — STL and PLY. Detection is content-based
 
 - One facet = one triangle (3 vertices, optional facet normal).
 - Case-insensitive; `Solid`/`endsolid` not required (scan state allows a
-  bare facet stream as long as facet structure matches).
+  bare facet stream as long as facet structure matches). A file that
+  closes its last facet with `endfacet` but omits the trailing
+  `endsolid` is accepted; a file that ends *inside* the last facet
+  (e.g., after `endloop` without `endfacet`) is an `invalid_stl` error —
+  the uncommitted triangle is never silently dropped.
+- Line endings are not significant: `\r\n` (Windows) and \r-only files
+  parse identically to `\n`. A UTF-8 byte-order mark before `solid` is
+  tolerated, as is content after `endsolid`.
+- Numbers may use scientific notation (`1e3`, `1.5E-2`).
 - Facet normals are read when present; the renderer *recomputes* normals
   anyway (spec: "recompute normals"), so `normals: false` in the summary
   reflects that vertex normals were not present, not that they are unused.
@@ -34,8 +42,11 @@ STL/PLY") — STL and PLY. Detection is content-based
 - Vertex layout: `x`, `y`, `z` floats (any scalar type), optional `nx/ny/nz`
   normals, optional `red/green/blue` or `red/green/blue/alpha` (uchar,
   ushort, or float — spec §10.5: integers 0–255 normalized, floats 0–1).
-  All color values are sRGB and are linearized for the renderer
-  (see `docs/decisions.md` D2).
+  Integer channels are interpreted as **byte scale** regardless of the
+  declared storage type: `uchar` and `ushort` holding 0–255 behave
+  identically, and integer values above 255 clamp (they are never
+  re-mapped to 0..1 from the wider range). All color values are sRGB and
+  are linearized for the renderer (see `docs/decisions.md` D2).
 - Faces: `3 vertex_indices` triangles; 4+ vertex polygons are fan-
   triangulated (`quad_face_triangulated` test). Non-finite or
   out-of-range indices are an error (`invalid_ply_data`).

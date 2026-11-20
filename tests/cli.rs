@@ -548,3 +548,101 @@ fn renders_binary_stl_and_ply_point_cloud() {
     let _ = std::fs::remove_file(&out);
     let _ = std::fs::remove_file(&out2);
 }
+
+#[test]
+fn cli_crlf_ascii_stl_renders_identically() {
+    // Windows line endings must produce the exact same pixels as LF.
+    let lf = std::fs::read(fixture("cube_ascii.stl")).unwrap();
+    let crlf = temp("cube_crlf.stl");
+    std::fs::write(&crlf, {
+        let mut v: Vec<u8> = lf
+            .iter()
+            .flat_map(|&b| {
+                if b == b'\n' {
+                    vec![b'\r', b'\n']
+                } else {
+                    vec![b]
+                }
+            })
+            .collect();
+        v.shrink_to_fit();
+        v
+    })
+    .unwrap();
+    let out_lf = temp("out_lf.png");
+    let out_crlf = temp("out_crlf.png");
+    let o1 = run(&[
+        "render",
+        &fixture("cube_ascii.stl").to_string_lossy(),
+        "-o",
+        &out_lf.to_string_lossy(),
+    ]);
+    let o2 = run(&[
+        "render",
+        &crlf.to_string_lossy(),
+        "-o",
+        &out_crlf.to_string_lossy(),
+    ]);
+    assert_eq!(o1.status.code(), Some(0));
+    assert_eq!(o2.status.code(), Some(0));
+    assert_eq!(
+        png_bytes(&out_lf),
+        png_bytes(&out_crlf),
+        "CRLF ASCII STL must render byte-identically to LF"
+    );
+    let _ = std::fs::remove_file(&crlf);
+    let _ = std::fs::remove_file(&out_lf);
+    let _ = std::fs::remove_file(&out_crlf);
+}
+
+#[test]
+fn cli_renders_binary_ply_with_uchar_colors() {
+    // End-to-end: binary little-endian PLY with per-vertex uchar colors is
+    // detected, parsed, and rendered (colors make the triangle visible).
+    let ply = temp("bicol.ply");
+    let mut data = Vec::new();
+    data.extend_from_slice(
+        b"ply\nformat binary_little_endian 1.0\nelement vertex 3\n\
+          property float x\nproperty float y\nproperty float z\n\
+          property uchar red\nproperty uchar green\nproperty uchar blue\n\
+          element face 1\nproperty list uchar int vertex_indices\nend_header\n",
+    );
+    let verts = [
+        ([0.0f32, 0.0, 0.0], [255u8, 0, 0]),
+        ([1.0, 0.0, 0.0], [0, 255, 0]),
+        ([0.0, 1.0, 0.0], [0, 0, 255]),
+    ];
+    for (p, c) in verts {
+        for v in p {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        data.extend_from_slice(&c);
+    }
+    data.push(3u8);
+    for i in 0i32..3 {
+        data.extend_from_slice(&i.to_le_bytes());
+    }
+    std::fs::write(&ply, &data).unwrap();
+    let out = temp("bicol.png");
+    let o = run(&[
+        "render",
+        &ply.to_string_lossy(),
+        "-o",
+        &out.to_string_lossy(),
+    ]);
+    assert_eq!(o.status.code(), Some(0), "stderr: {}", stderr(&o));
+    let bytes = png_bytes(&out);
+    assert_eq!(png_dimensions(&bytes), (256, 256));
+    let mut reader = png::Decoder::new(&bytes[..]).read_info().unwrap();
+    let sp = reader.info().color_type.samples();
+    let mut buf = vec![0; reader.output_buffer_size()];
+    reader.next_frame(&mut buf).unwrap();
+    let bg = [32u8, 36, 43];
+    let hits = buf
+        .chunks_exact(sp)
+        .filter(|px| px[0] != bg[0] && px[1] != bg[1] && px[2] != bg[2] && px[3] > 200)
+        .count();
+    assert!(hits > 50, "expected a visible triangle, got {hits} pixels");
+    let _ = std::fs::remove_file(&ply);
+    let _ = std::fs::remove_file(&out);
+}

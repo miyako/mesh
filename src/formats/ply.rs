@@ -852,6 +852,175 @@ mod tests {
     }
 
     #[test]
+    fn binary_le_uchar_colors() {
+        let hdr = "ply\nformat binary_little_endian 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n";
+        let mut data = Vec::new();
+        let verts = [
+            ([0.0f32, 0.0, 0.0], [255u8, 0, 0]),
+            ([1.0, 0.0, 0.0], [0, 255, 0]),
+            ([0.0, 1.0, 0.0], [0, 0, 255]),
+        ];
+        for (p, c) in verts {
+            for v in p {
+                data.extend_from_slice(&v.to_le_bytes());
+            }
+            data.extend_from_slice(&c);
+        }
+        data.push(3u8);
+        for i in 0i32..3 {
+            data.extend_from_slice(&i.to_le_bytes());
+        }
+        let (g, _) = bench_geo(hdr, &data, FormatVariant::PlyBinaryLe);
+        let m = match g {
+            Geometry::Mesh(m) => m,
+            _ => panic!(),
+        };
+        let c = m.colors.unwrap();
+        // Same expectations as the ASCII color test: full channels are
+        // unaffected by sRGB linearization.
+        assert_eq!(c[0], Color::new(1.0, 0.0, 0.0, 1.0));
+        assert_eq!(c[1], Color::new(0.0, 1.0, 0.0, 1.0));
+        assert_eq!(c[2], Color::new(0.0, 0.0, 1.0, 1.0));
+    }
+
+    #[test]
+    fn binary_be_uchar_colors() {
+        let hdr = "ply\nformat binary_big_endian 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n";
+        let mut data = Vec::new();
+        let verts = [
+            ([0.0f32, 0.0, 0.0], [255u8, 0, 0]),
+            ([1.0, 0.0, 0.0], [0, 255, 0]),
+            ([0.0, 1.0, 0.0], [0, 0, 255]),
+        ];
+        for (p, c) in verts {
+            for v in p {
+                data.extend_from_slice(&v.to_be_bytes());
+            }
+            data.extend_from_slice(&c);
+        }
+        data.push(3u8);
+        for i in 0i32..3 {
+            data.extend_from_slice(&i.to_be_bytes());
+        }
+        let (g, _) = bench_geo(hdr, &data, FormatVariant::PlyBinaryBe);
+        let m = match g {
+            Geometry::Mesh(m) => m,
+            _ => panic!(),
+        };
+        let c = m.colors.unwrap();
+        assert_eq!(c[0], Color::new(1.0, 0.0, 0.0, 1.0));
+        assert_eq!(c[2], Color::new(0.0, 0.0, 1.0, 1.0));
+    }
+
+    #[test]
+    fn binary_ushort_colors_are_byte_scale() {
+        // Integer color channels are interpreted as byte scale 0..255 per
+        // spec §10.5, so ushort storage with byte-scale values maps
+        // identically, and values beyond 255 clamp (never wrap).
+        let hdr = "ply\nformat binary_little_endian 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\nproperty ushort red\nproperty ushort green\nproperty ushort blue\nend_header\n";
+        let mut data = Vec::new();
+        for (p, c) in [
+            ([0.0f32, 0.0, 0.0], [128u16, 255, 65280]), // 65280 > 255 -> clamps red to 255
+            ([1.0, 0.0, 0.0], [65280, 65535, 0]),       // both clamp to 255
+        ] {
+            for v in p {
+                data.extend_from_slice(&v.to_le_bytes());
+            }
+            for v in c {
+                data.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        let (g, _) = bench_geo(hdr, &data, FormatVariant::PlyBinaryLe);
+        let pc = match g {
+            Geometry::PointCloud(p) => p,
+            _ => panic!(),
+        };
+        let c = pc.colors.unwrap();
+        // 16-bit storage, byte-scale interpretation (spec §10.5): 128 stays
+        // mid-tone (sRGB-linearized), and 65280/65535 clamp to full (1.0) —
+        // never wrap-around, never 0..65535 remapping (0.996/1.000).
+        assert_eq!(
+            c[0],
+            Color::new(
+                crate::render::image::srgb_to_linear(128.0 / 255.0),
+                1.0,
+                1.0,
+                1.0
+            )
+        );
+        assert_eq!(c[1], Color::new(1.0, 1.0, 0.0, 1.0));
+    }
+
+    #[test]
+    fn binary_float_colors_normalized() {
+        // Float channels are 0..1 and sRGB-linearized like integer ones.
+        let hdr = "ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nproperty float red\nproperty float green\nproperty float blue\nend_header\n";
+        let mut data = Vec::new();
+        for v in [0.0f32, 0.0, 0.0, 1.0, 0.5, 0.0] {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        let (g, _) = bench_geo(hdr, &data, FormatVariant::PlyBinaryLe);
+        let pc = match g {
+            Geometry::PointCloud(p) => p,
+            _ => panic!(),
+        };
+        let c = pc.colors.unwrap()[0];
+        assert_eq!(c.r, 1.0);
+        assert_eq!(c.g, crate::render::image::srgb_to_linear(0.5));
+        assert_eq!(c.b, 0.0);
+        assert_eq!(c.a, 1.0);
+    }
+
+    #[test]
+    fn ascii_alpha_channel_read() {
+        // An explicit alpha property flows into Color.a through the same
+        // channel conversion (alpha 128/255 is not 1.0).
+        let hdr = "ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nproperty uchar alpha\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n";
+        let data = b"0 0 0 255 0 0 128\n1 0 0 0 0 0 255\n0 1 0 0 0 0 255\n3 0 1 2\n";
+        let (g, _) = bench_geo(hdr, data, FormatVariant::PlyAscii);
+        let m = match g {
+            Geometry::Mesh(m) => m,
+            _ => panic!(),
+        };
+        let c = m.colors.unwrap()[0];
+        assert_eq!(c.r, 1.0);
+        assert!(c.a < 1.0, "alpha must be read, got {}", c.a);
+        assert_eq!(c.a, crate::render::image::srgb_to_linear(128.0 / 255.0));
+    }
+
+    #[test]
+    fn binary_le_point_cloud_with_colors() {
+        let hdr = "ply\nformat binary_little_endian 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n";
+        let mut data = Vec::new();
+        for (p, c) in [
+            ([0.0f32, 0.0, 0.0], [255u8, 0, 0]),
+            ([1.0, 1.0, 1.0], [0, 128, 255]),
+        ] {
+            for v in p {
+                data.extend_from_slice(&v.to_le_bytes());
+            }
+            data.extend_from_slice(&c);
+        }
+        let (g, _) = bench_geo(hdr, &data, FormatVariant::PlyBinaryLe);
+        let pc = match g {
+            Geometry::PointCloud(p) => p,
+            _ => panic!("expected point cloud"),
+        };
+        assert_eq!(pc.positions.len(), 2);
+        let c = pc.colors.unwrap();
+        assert_eq!(c[0], Color::new(1.0, 0.0, 0.0, 1.0));
+        assert_eq!(
+            c[1],
+            Color::new(
+                0.0,
+                crate::render::image::srgb_to_linear(128.0 / 255.0),
+                1.0,
+                1.0
+            )
+        );
+    }
+
+    #[test]
     fn binary_le_roundtrip() {
         let hdr = "ply\nformat binary_little_endian 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n";
         let mut data = Vec::new();
