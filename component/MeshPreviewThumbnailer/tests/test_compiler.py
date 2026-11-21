@@ -26,6 +26,10 @@ class CompilerTests(unittest.TestCase):
         self.name = config["repository"]
         self.feature_class = config.get("feature_class", "Greeting")
         shutil.copytree(ROOT / "component" / self.name, self.root / "component" / self.name)
+        # The real component may carry compiler-generated DerivedData from a
+        # previous compile; stage a clean project so symlink-negative checks
+        # (and digest identity) are deterministic regardless of source state.
+        shutil.rmtree(self.root / "component" / self.name / "Project" / "DerivedData", ignore_errors=True)
         self.project = self.root / "component" / self.name / "Project" / (self.name + ".4DProject")
         self.status = self.root / "build/compile-status.json"
 

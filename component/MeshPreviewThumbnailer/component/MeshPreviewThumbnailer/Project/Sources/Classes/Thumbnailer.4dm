@@ -18,21 +18,22 @@ Function inspect($InputFile : 4D.File)->$result : Object
 	$result:=This._decode(This._cli.execute(New collection("inspect"; $InputFile; "--json")))
 
 Function version()->$result : Object
-	var $stdout; $version : Text
 	var $start; $length : Integer
-	var $groups : Collection
 	$result:=This._cli.execute(New collection("--version"))
 	If (Not($result.ok))
 		return $result
 	End if
-	$stdout:=Trim($result.stdout)
-	$groups:=New collection
-	If (Match regex("^mesh-thumb ([0-9]+\\.[0-9]+\\.[0-9]+)$"; $stdout; 1; $start; $length; $groups))
-		$version:=$groups[0]
-		$result.value:=New object("name"; "mesh-thumb"; "version"; $version)
+	If (Match regex("^mesh-thumb ([0-9]+\\.[0-9]+\\.[0-9]+)(\\r?\\n)?$"; $result.stdout))
+		// The outer pattern already guarantees the semver; extract it by position.
+		If (Match regex("[0-9]+\\.[0-9]+\\.[0-9]+"; $result.stdout; 1; $start; $length))
+			$result.value:=New object("name"; "mesh-thumb"; "version"; Substring($result.stdout; $start; $length))
+		Else
+			$result.ok:=False
+			$result.error:=New object("code"; "invalid_protocol"; "message"; "mesh-thumb --version matched but no version token found: " + $result.stdout)
+		End if
 	Else
 		$result.ok:=False
-		$result.error:=New object("code"; "invalid_protocol"; "message"; "mesh-thumb --version must match mesh-thumb <semver>, got: " + $stdout)
+		$result.error:=New object("code"; "invalid_protocol"; "message"; "mesh-thumb --version must match mesh-thumb <semver>, got: " + $result.stdout)
 	End if
 
 Function render($InputFile : 4D.File; $OutputFile : 4D.File; $options : Object)->$result : Object
@@ -97,21 +98,25 @@ Function render($InputFile : 4D.File; $OutputFile : 4D.File; $options : Object)-
 	End if
 
 Function _pngValid($file : 4D.File)->$valid : Boolean
-	var $handle : 4D.FileHandle
 	var $bytes : Blob
+	var $previous : Text
+	var CLI_LastErrors : Collection
 	$valid:=False
-	If ($file.exists)
-		$handle:=$file.open()
-		If ($handle#Null)
-			$bytes:=$handle.read(8)
-			$handle.close()
-			If (Length($bytes)=8)
-				If (BLOB to longint($bytes; big endian; 0)=-1995860921) // 0x89504E47 PNG magic
-					$valid:=(BLOB to longint($bytes; big endian; 4)=218765834) // 0x0D0A1A0A
-				End if
-			End if
-		End if
+	If (Not($file.exists))
+		return $valid
 	End if
+	$previous:=Method called on error(ek local)
+	CLI_LastErrors:=Null
+	ON ERR CALL("_CaptureError"; ek local)
+	DOCUMENT TO BLOB($file.platformPath; $bytes)
+	ON ERR CALL($previous; ek local)
+	If ((CLI_LastErrors#Null) | (BLOB size($bytes)<8))
+		CLI_LastErrors:=Null
+		return $valid
+	End if
+	CLI_LastErrors:=Null
+	// PNG signature: 0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A
+	$valid:=($bytes{0}=137) & ($bytes{1}=80) & ($bytes{2}=78) & ($bytes{3}=71) & ($bytes{4}=13) & ($bytes{5}=10) & ($bytes{6}=26) & ($bytes{7}=10)
 
 Function _decode($result : Object)->$decoded : Object
 	var $payload : Variant

@@ -143,6 +143,15 @@ binary under the component's harness):
       §22.5 timeout case is covered by `_Process`'s finite timeout, and
       concurrency bounding is deferred until a real asynchronous caller
       exists.
+- [x] Real 4D compilation: `scripts/compile_component.py` passes with the
+      pinned free tool4d 20.7/101905 on this host — `x86_64_generic` +
+      `arm64_macOS_lib`, input/output digests bound in
+      `build/compile-status.json`; the compiler regenerated
+      `Resources/en.lproj/syntaxEN.json` with the `Thumbnailer` class (no
+      Greeting metadata). `version()` and `_pngValid()` were hardened by the
+      actual compiler (no `Trim`; `Match regex` position outputs instead of a
+      groups Collection; PNG signature checked byte-wise via `DOCUMENT TO BLOB`,
+      no `FileHandle`).
 - [ ] Packaging + binary provisioning: the `external_cli` adapter pins the
       release ZIP (`asset-lock.json`) and assembles
       `Resources/bin/<platform>/mesh-thumb[.exe]`; blocked until the
