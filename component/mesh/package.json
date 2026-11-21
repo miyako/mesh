@@ -1,6 +1,6 @@
 {
   "name": "mesh",
-  "version": "20.0.1",
+  "version": "20.0.2",
   "private": true,
   "description": "Deterministic STL/PLY thumbnail rendering",
   "license": "MIT",
