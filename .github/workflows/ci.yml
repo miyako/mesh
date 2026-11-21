@@ -74,6 +74,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # Pin Python like the component's canonical CI: the macos-latest
+      # image's Homebrew python3 (3.15.x) has no PyYAML, and the suite's
+      # release-machinery tests (test_workflows) import yaml to parse the
+      # checked-in workflow contracts (see AGENTS.md).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned workflow validator dependency
+        working-directory: component/MeshPreviewThumbnailer
+        run: python3 -m pip install -r tooling/requirements-workflow.txt
       - name: Install verified native CLI (once release pins exist)
         working-directory: component/MeshPreviewThumbnailer
         run: |
