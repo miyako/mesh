@@ -3,82 +3,504 @@
   "feature": {
     "casesPath": "/cases",
     "cases": [
-      {"stdout": "{\"protocol\":1,\"message\":\"Hello, world!\"}\n", "stderr": "", "exitCode": 0, "value": {"protocol": 1, "message": "Hello, world!"}},
-      {"stdout": "{\"protocol\":1,\"message\":\"Hello, path with spaces!\"}\n", "stderr": "", "exitCode": 0, "value": {"protocol": 1, "message": "Hello, path with spaces!"}},
-      {"stdout": "{\"protocol\":1,\"message\":\"Hello, quote \\\" and \\\\ slash!\"}\n", "stderr": "", "exitCode": 0, "value": {"protocol": 1, "message": "Hello, quote \" and \\ slash!"}},
-      {"stdout": "{\"protocol\":1,\"message\":\"Hello, line\\nbreak!\"}\n", "stderr": "", "exitCode": 0, "value": {"protocol": 1, "message": "Hello, line\nbreak!"}},
-      {"stdout": "{\"protocol\":1,\"message\":\"Hello, 日本語!\"}\n", "stderr": "", "exitCode": 0, "value": {"protocol": 1, "message": "Hello, 日本語!"}},
-      {"stdout": "{\"protocol\":1,\"message\":\"Hello, $() ; & % !!\"}\n", "stderr": "", "exitCode": 0, "value": {"protocol": 1, "message": "Hello, $() ; & % !!"}}
+      {
+        "stdout": "mesh-thumb 0.3.0\n",
+        "stderr": "",
+        "exitCode": 0,
+        "value": {
+          "name": "mesh-thumb",
+          "version": "0.3.0"
+        }
+      },
+      {
+        "stdout": "{\n  \"schema_version\": 1,\n  \"success\": true,\n  \"result\": {\n    \"app\": \"mesh-thumb\",\n    \"backends\": [\n      \"auto\",\n      \"cpu\"\n    ],\n    \"formats\": [\n      \"stl\",\n      \"ply\"\n    ],\n    \"gpu_backend_available\": false,\n    \"max_input_bytes\": 1073741824,\n    \"max_output_dimension\": 8192,\n    \"max_output_pixels\": 67108864,\n    \"max_quality\": 8,\n    \"version\": \"0.3.0\",\n    \"views\": [\n      \"iso\",\n      \"top\",\n      \"front\",\n      \"side\"\n    ]\n  }\n}\n",
+        "stderr": "",
+        "exitCode": 0,
+        "value": {
+          "app": "mesh-thumb",
+          "backends": [
+            "auto",
+            "cpu"
+          ],
+          "formats": [
+            "stl",
+            "ply"
+          ],
+          "gpu_backend_available": false,
+          "max_input_bytes": 1073741824,
+          "max_output_dimension": 8192,
+          "max_output_pixels": 67108864,
+          "max_quality": 8,
+          "version": "0.3.0",
+          "views": [
+            "iso",
+            "top",
+            "front",
+            "side"
+          ]
+        }
+      }
     ],
     "assertions": [
-      {"path": "/invalid/ok", "equals": false},
-      {"path": "/invalid/exitCode", "equals": 2},
-      {"path": "/invalid/stdout", "equals": ""},
-      {"path": "/invalid/stderr", "equals": "{\"protocol\":1,\"error\":{\"code\":\"invalid_arguments\",\"message\":\"expected greet --name <non-empty UTF-8 name> or --version\"}}\n"},
-      {"path": "/invalid/error/code", "equals": "cli_error"},
-      {"path": "/version/ok", "equals": true},
-      {"path": "/version/stdout", "equals": "{\"protocol\":1,\"version\":\"0.1.0\"}\n"},
-      {"path": "/version/stderr", "equals": ""},
-      {"path": "/version/exitCode", "equals": 0},
-      {"path": "/version/value", "equals": {"protocol": 1, "version": "0.1.0"}},
-      {"path": "/protocol/ok", "equals": false},
-      {"path": "/protocol/stdout", "equals": "not json"},
-      {"path": "/protocol/stderr", "equals": ""},
-      {"path": "/protocol/exitCode", "equals": 0},
-      {"path": "/protocol/error/code", "equals": "invalid_protocol"},
-      {"path": "/protocolTypes", "length": 2, "each": [
-        {"path": "/ok", "equals": false},
-        {"path": "/stderr", "equals": ""},
-        {"path": "/exitCode", "equals": 0},
-        {"path": "/error/code", "equals": "invalid_protocol"},
-        {"path": "/error/message", "equals": "Unsupported CLI protocol version"},
-        {"path": "/value", "absent": true}
-      ]},
-      {"path": "/protocolTypes/0/stdout", "equals": "{\"protocol\":true,\"message\":\"invalid\"}"},
-      {"path": "/protocolTypes/1/stdout", "equals": "{\"protocol\":false,\"message\":\"invalid\"}"},
-      {"path": "/protocolNull/ok", "equals": false},
-      {"path": "/protocolNull/stdout", "equals": "{\"protocol\":null,\"message\":\"invalid\"}"},
-      {"path": "/protocolNull/stderr", "equals": ""},
-      {"path": "/protocolNull/exitCode", "equals": 0},
-      {"path": "/protocolNull/error/code", "equals": "invalid_protocol"},
-      {"path": "/protocolNull/error/message", "equals": "Unsupported CLI protocol version"},
-      {"path": "/protocolNull/value", "absent": true},
-      {"path": "/protocolScalars", "length": 5, "each": [
-        {"path": "/ok", "equals": false},
-        {"path": "/stderr", "equals": ""},
-        {"path": "/exitCode", "equals": 0},
-        {"path": "/error/code", "equals": "invalid_protocol"},
-        {"path": "/error/message", "equals": "CLI response must be a JSON object"},
-        {"path": "/value", "absent": true}
-      ]},
-      {"path": "/protocolScalars/0/stdout", "equals": "true"},
-      {"path": "/protocolScalars/1/stdout", "equals": "false"},
-      {"path": "/protocolScalars/2/stdout", "equals": "null"},
-      {"path": "/protocolScalars/3/stdout", "equals": "1"},
-      {"path": "/protocolScalars/4/stdout", "equals": "[]"}
+      {
+        "path": "/cases/0/stdout",
+        "equals": "mesh-thumb 0.3.0\n"
+      },
+      {
+        "path": "/cases/0/value/version",
+        "equals": "0.3.0"
+      },
+      {
+        "path": "/cases/0/value/name",
+        "equals": "mesh-thumb"
+      },
+      {
+        "path": "/cases/1/value/version",
+        "equals": "0.3.0"
+      },
+      {
+        "path": "/cases/1/value/app",
+        "equals": "mesh-thumb"
+      },
+      {
+        "path": "/cases/1/value/backends",
+        "equals": [
+          "auto",
+          "cpu"
+        ]
+      },
+      {
+        "path": "/cases/1/value/gpu_backend_available",
+        "equals": false
+      },
+      {
+        "path": "/cases/1/value/max_quality",
+        "equals": 8
+      },
+      {
+        "path": "/cases/1/value/views",
+        "equals": [
+          "iso",
+          "top",
+          "front",
+          "side"
+        ]
+      }
     ]
   },
   "execution": {
-    "successPaths": ["/fileArgument", "/folderArgument", "/renamedExecutable"],
+    "successPaths": [
+      "/renamedExecutable",
+      "/renderTri",
+      "/renderCube",
+      "/inspect"
+    ],
     "assertions": [
-      {"path": "/renamedExecutable", "equals": {"ok": true, "stdout": "{\"protocol\":1,\"version\":\"0.1.0\"}\n", "stderr": "", "exitCode": 0}},
-      {"path": "/missing/ok", "equals": false},
-      {"path": "/missing/error/code", "equals": "missing_executable"},
-      {"path": "/missing/exitCode", "absent": true},
-      {"path": "/unsupported/ok", "equals": false},
-      {"path": "/unsupported/error/code", "equals": "unsupported_architecture"},
-      {"path": "/unsupported/exitCode", "absent": true},
-      {"path": "/launch/ok", "equals": false},
-      {"path": "/launch/error/code", "equals": "launch_failed"},
-      {"path": "/launch/exitCode", "absent": true},
-      {"path": "/rejectedArguments", "length": 9, "each": [
-        {"path": "/result", "equals": {"ok": false, "error": {"code": "invalid_argument", "message": "Arguments must be Text, File or Folder"}}}
-      ]},
-      {"path": "/rejectedNul", "length": 3, "each": [
-        {"path": "", "equals": {"ok": false, "error": {"code": "invalid_argument", "message": "NUL is not permitted in process arguments"}}}
-      ]},
-      {"path": "/missingFile", "equals": {"ok": false, "error": {"code": "invalid_argument", "message": "Executable File and arguments Collection are required"}}},
-      {"path": "/missingArguments", "equals": {"ok": false, "error": {"code": "invalid_argument", "message": "Executable File and arguments Collection are required"}}}
+      {
+        "path": "/renamedExecutable",
+        "equals": {
+          "ok": true,
+          "stdout": "mesh-thumb 0.3.0\n",
+          "stderr": "",
+          "exitCode": 0
+        }
+      },
+      {
+        "path": "/missing/ok",
+        "equals": false
+      },
+      {
+        "path": "/missing/error/code",
+        "equals": "missing_executable"
+      },
+      {
+        "path": "/missing/exitCode",
+        "absent": true
+      },
+      {
+        "path": "/unsupported/ok",
+        "equals": false
+      },
+      {
+        "path": "/unsupported/error/code",
+        "equals": "unsupported_architecture"
+      },
+      {
+        "path": "/unsupported/exitCode",
+        "absent": true
+      },
+      {
+        "path": "/launch/ok",
+        "equals": false
+      },
+      {
+        "path": "/launch/error/code",
+        "equals": "launch_failed"
+      },
+      {
+        "path": "/launch/exitCode",
+        "absent": true
+      },
+      {
+        "path": "/invalid/ok",
+        "equals": false
+      },
+      {
+        "path": "/invalid/error/code",
+        "equals": "io_error"
+      },
+      {
+        "path": "/invalid/exitCode",
+        "equals": 1
+      },
+      {
+        "path": "/invalid/stderr",
+        "matches": "^mesh-thumb: io_error: [^\\r\\n]*\\(os error 2\\)\\r?\\n$"
+      },
+      {
+        "path": "/invalid/error/path",
+        "matches": ".*missing-input\\.stl$"
+      },
+      {
+        "path": "/invalidArgs/ok",
+        "equals": false
+      },
+      {
+        "path": "/invalidArgs/error/code",
+        "equals": "invalid_argument"
+      },
+      {
+        "path": "/invalidArgs/exitCode",
+        "absent": true
+      },
+      {
+        "path": "/protocol/ok",
+        "equals": false
+      },
+      {
+        "path": "/protocol/stdout",
+        "equals": "not json"
+      },
+      {
+        "path": "/protocol/stderr",
+        "equals": ""
+      },
+      {
+        "path": "/protocol/exitCode",
+        "equals": 0
+      },
+      {
+        "path": "/protocol/error/code",
+        "equals": "invalid_protocol"
+      },
+      {
+        "path": "/protocol/error/message",
+        "equals": "CLI response must be a JSON object"
+      },
+      {
+        "path": "/protocolTypes",
+        "length": 2,
+        "each": [
+          {
+            "path": "/ok",
+            "equals": false
+          },
+          {
+            "path": "/stderr",
+            "equals": ""
+          },
+          {
+            "path": "/exitCode",
+            "equals": 0
+          },
+          {
+            "path": "/error/code",
+            "equals": "invalid_protocol"
+          },
+          {
+            "path": "/error/message",
+            "equals": "Unsupported CLI protocol version"
+          },
+          {
+            "path": "/value",
+            "absent": true
+          }
+        ]
+      },
+      {
+        "path": "/protocolTypes/0/stdout",
+        "equals": "{\"schema_version\":true}"
+      },
+      {
+        "path": "/protocolTypes/1/stdout",
+        "equals": "{\"schema_version\":false}"
+      },
+      {
+        "path": "/protocolNull/ok",
+        "equals": false
+      },
+      {
+        "path": "/protocolNull/stdout",
+        "equals": "{\"schema_version\":null}"
+      },
+      {
+        "path": "/protocolNull/stderr",
+        "equals": ""
+      },
+      {
+        "path": "/protocolNull/exitCode",
+        "equals": 0
+      },
+      {
+        "path": "/protocolNull/error/code",
+        "equals": "invalid_protocol"
+      },
+      {
+        "path": "/protocolNull/error/message",
+        "equals": "Unsupported CLI protocol version"
+      },
+      {
+        "path": "/protocolNull/value",
+        "absent": true
+      },
+      {
+        "path": "/protocolScalars",
+        "length": 5,
+        "each": [
+          {
+            "path": "/ok",
+            "equals": false
+          },
+          {
+            "path": "/stderr",
+            "equals": ""
+          },
+          {
+            "path": "/exitCode",
+            "equals": 0
+          },
+          {
+            "path": "/error/code",
+            "equals": "invalid_protocol"
+          },
+          {
+            "path": "/error/message",
+            "equals": "CLI response must be a JSON object"
+          },
+          {
+            "path": "/value",
+            "absent": true
+          }
+        ]
+      },
+      {
+        "path": "/protocolScalars/0/stdout",
+        "equals": "true"
+      },
+      {
+        "path": "/protocolScalars/1/stdout",
+        "equals": "false"
+      },
+      {
+        "path": "/protocolScalars/2/stdout",
+        "equals": "null"
+      },
+      {
+        "path": "/protocolScalars/3/stdout",
+        "equals": "1"
+      },
+      {
+        "path": "/protocolScalars/4/stdout",
+        "equals": "[]"
+      },
+      {
+        "path": "/envelopeFailure/ok",
+        "equals": false
+      },
+      {
+        "path": "/envelopeFailure/error/code",
+        "equals": "io_error"
+      },
+      {
+        "path": "/envelopeFailure/error/message",
+        "equals": "intentional failure"
+      },
+      {
+        "path": "/envelopeFailure/error/path",
+        "equals": null
+      },
+      {
+        "path": "/envelopeFailure/error/stage",
+        "equals": null
+      },
+      {
+        "path": "/envelopeFailure/exitCode",
+        "equals": 0
+      },
+      {
+        "path": "/renderTri/ok",
+        "equals": true
+      },
+      {
+        "path": "/renderTri/pngValid",
+        "equals": true
+      },
+      {
+        "path": "/renderTri/pngSize",
+        "equals": 1765
+      },
+      {
+        "path": "/renderTri/value/geometry/kind",
+        "equals": "mesh"
+      },
+      {
+        "path": "/renderTri/value/geometry/triangles",
+        "equals": 1
+      },
+      {
+        "path": "/renderTri/value/geometry/vertices",
+        "equals": 3
+      },
+      {
+        "path": "/renderTri/value/width",
+        "equals": 64
+      },
+      {
+        "path": "/renderTri/value/height",
+        "equals": 64
+      },
+      {
+        "path": "/renderTri/value/cache",
+        "equals": "off"
+      },
+      {
+        "path": "/renderTri/value/input/format",
+        "equals": "stl_ascii"
+      },
+      {
+        "path": "/renderTri/value/input/file_size",
+        "equals": 149
+      },
+      {
+        "path": "/renderTri/value/warnings/degenerate_triangles",
+        "equals": 0
+      },
+      {
+        "path": "/renderTri/value/warnings/non_finite_vertices",
+        "equals": 0
+      },
+      {
+        "path": "/renderCube/ok",
+        "equals": true
+      },
+      {
+        "path": "/renderCube/pngValid",
+        "equals": true
+      },
+      {
+        "path": "/renderCube/pngSize",
+        "equals": 6935
+      },
+      {
+        "path": "/renderCube/value/geometry/triangles",
+        "equals": 12
+      },
+      {
+        "path": "/renderCube/value/geometry/vertices",
+        "equals": 8
+      },
+      {
+        "path": "/renderCube/value/width",
+        "equals": 128
+      },
+      {
+        "path": "/renderCube/value/height",
+        "equals": 128
+      },
+      {
+        "path": "/renderCube/value/input/format",
+        "equals": "ply_ascii"
+      },
+      {
+        "path": "/renderCube/value/input/file_size",
+        "equals": 299
+      },
+      {
+        "path": "/inspect/ok",
+        "equals": true
+      },
+      {
+        "path": "/inspect/value/geometry/kind",
+        "equals": "mesh"
+      },
+      {
+        "path": "/inspect/value/geometry/triangles",
+        "equals": 1
+      },
+      {
+        "path": "/inspect/value/input/format",
+        "equals": "stl_ascii"
+      },
+      {
+        "path": "/inspect/value/input/file_size",
+        "equals": 149
+      },
+      {
+        "path": "/inspect/value/warnings/degenerate_triangles",
+        "equals": 0
+      },
+      {
+        "path": "/rejectedArguments",
+        "length": 9,
+        "each": [
+          {
+            "path": "/result",
+            "equals": {
+              "ok": false,
+              "error": {
+                "code": "invalid_argument",
+                "message": "Arguments must be Text, File or Folder"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "path": "/rejectedNul",
+        "length": 3,
+        "each": [
+          {
+            "path": "",
+            "equals": {
+              "ok": false,
+              "error": {
+                "code": "invalid_argument",
+                "message": "NUL is not permitted in process arguments"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "path": "/missingFile",
+        "equals": {
+          "ok": false,
+          "error": {
+            "code": "invalid_argument",
+            "message": "Executable File and arguments Collection are required"
+          }
+        }
+      },
+      {
+        "path": "/missingArguments",
+        "equals": {
+          "ok": false,
+          "error": {
+            "code": "invalid_argument",
+            "message": "Executable File and arguments Collection are required"
+          }
+        }
+      }
     ]
   }
 }

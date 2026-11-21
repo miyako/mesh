@@ -16,7 +16,7 @@ shell, download, copied PDF algorithm or queue.
 
 macOS default/`macOS-universal` uses the two-slice executable. Windows requires
 explicit `Windows-x64`. Unknown selection or OS returns an explicit error;
-Windows ARM64 native execution is not implemented. See [Greeting](Greeting.md)
+Windows ARM64 native execution is not implemented. See [Thumbnailer](Thumbnailer.md)
 for the common result/error shape.
 
 The read-only `compiled` Boolean evaluates `Is compiled mode` inside the

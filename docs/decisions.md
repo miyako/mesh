@@ -159,3 +159,31 @@ CLI work here. The wrapper starts after the CLI contract is stable;
 wrapper parses the schema-versioned JSON envelope and checks
 `schema_version` (protocol.md), and additive options never change
 existing result fields.
+
+## D16. Envelope-on-stdout decoding; plain-text --version; PNG validation
+
+`MeshPreview.Thumbnailer` (component `MeshPreviewThumbnailer`, class
+`Thumbnailer`) treats the stdout JSON envelope as authoritative even
+when the process exit code is nonzero: an `io_error`/`unsupported_format`
+in the envelope is surfaced as the wrapper `error` (`code`, `message`,
+`path`, `stage`) instead of a generic nonzero-exit `cli_error`. Exit
+codes and stderr diagnostics remain advisory and are still retained.
+`inspect`/`capabilities` decode through the same `_decode`; `version`
+does **not** use an envelope — `--version` stays plain text
+(`mesh-thumb <semver>`), parsed with a strict regex that rejects other
+shapes as `invalid_protocol` while keeping stdout identical to the CLI.
+`render` validates the produced PNG header (magic `\x89PNG\r\n\x1a\n`)
+before reporting success and exposes the deterministic `pngSize`
+(rendering is byte-reproducible per D12/D13), so the real 4D host
+fixture asserts exact PNG size and the decoded envelope fields rather
+than re-hashing bytes in 4D (avoiding hash-encoding ambiguity while
+still pinning determinism). Section 22.1/22.3 options (`size`, `view`,
+`background`, `quality`) are type/range-validated in 4D **before** any
+process launches, failing with `invalid_argument`. `clearCache` remains
+deferred: `render` never populates a cache (`cache:"off"`), so the §22.5
+cache cases are covered by the CLI contract, not the wrapper. The host
+contract holds exact `stdout` cases only for host-independent wire
+outputs (`--version`, `capabilities`); render/inspect cases that embed
+staged paths or `render_ms` are asserted structurally
+(pointer `equals`/`matches`/`length`/`each`) via the runner, never as
+pretended fixed vectors.

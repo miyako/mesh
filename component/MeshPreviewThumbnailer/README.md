@@ -2,8 +2,9 @@
 
 An agent-ready **real 4D component project** wrapping a native CLI on macOS and
 Windows. Choose **Go, Rust or C++**; initialization keeps only that starter.
-The working greeting example uses the same deterministic UTF-8 JSON protocol in
-each language. Replace the example with your feature, not the generic adapter.
+The working example renders deterministic STL/PLY thumbnails through the bundled
+`mesh-thumb` CLI using a versioned JSON envelope. Replace the example with your
+feature, not the generic adapter.
 
 ## Start here: THINK / ASK → RUN
 
@@ -60,7 +61,7 @@ requires a fresh template. **The feature description is recorded, not automatica
 implemented.** Read [AGENTS.md](AGENTS.md) for the end-to-end agent workflow.
 
 After initialization, optional `scripts/rename_feature.py --root . --class NAME`
-rewrites only the known Greeting identity/configuration registry. It does **not**
+rewrites only the known Thumbnailer identity/configuration registry. It does **not**
 implement the new API or protocol. Follow the playbook's full replacement
 inventory, including build smoke tests, host assertions and completion metadata.
 
@@ -124,7 +125,7 @@ component/<repository>/
   Project/Sources/Classes/
     _CLI.4dm                          generic resource resolver
     _Process.4dm                      generic quoting/execution/status adapter
-    Greeting.4dm                      replaceable feature API
+    Thumbnailer.4dm                      replaceable feature API
   Project/Sources/Methods/_CaptureError.4dm
   Documentation/Classes/*.md           class contracts
   Resources/logo.png + logo.svg        copied from assets/ by the build
@@ -141,12 +142,12 @@ The **component/project/catalog/package/release ZIP name MUST equal the reposito
 basename** for dependency-manager releases. Namespace is independent:
 `settings.4DSettings` is XML with
 `<general component_classStore_name="MeshPreview"/>`.
-Host code uses `cs.MeshPreview.Greeting`; internal code uses `cs.Greeting`.
+Host code uses `cs.MeshPreview.Thumbnailer`; internal code uses `cs.Thumbnailer`.
 4D shares classes through the namespace: underscores are internal **by
 convention**, not private access or an exported-class manifest.
 
 Class docs:
-[Greeting](component/MeshPreviewThumbnailer/Documentation/Classes/Greeting.md),
+[Thumbnailer](component/MeshPreviewThumbnailer/Documentation/Classes/Thumbnailer.md),
 [_CLI](component/MeshPreviewThumbnailer/Documentation/Classes/_CLI.md),
 [_Process](component/MeshPreviewThumbnailer/Documentation/Classes/_Process.md).
 The actual compiler generates `Resources/en.lproj/syntaxEN.json`, preventing
@@ -157,43 +158,60 @@ stale completion metadata.
 After installation, use your initialized namespace:
 
 ```4d
-var $tool : cs.MeshPreview.Greeting
-var $result : Object
+var $tool : cs.MeshPreview.Thumbnailer
+var $result; $options : Object
 var $target : Text
 $target:="macOS-universal"
 If (Is Windows)
   $target:="Windows-x64"
 End if
-$tool:=cs.MeshPreview.Greeting.new($target)
-$result:=$tool.greet("4D")
+$tool:=cs.MeshPreview.Thumbnailer.new($target)
+$options:=New object("size"; 256; "view"; "iso")
+$result:=$tool.render(Folder(fk resources folder).file("triangle.stl"); Folder(fk temporary folder).file("render.png"); $options)
 If ($result.ok)
-  ALERT($result.value.message)  // Hello, 4D!
-Else
-  ALERT($result.error.code+": "+$result.error.message)
+  ALERT("Rendered "+String($result.pngSize)+" bytes")
+  $result:=$tool.inspect(Folder(fk resources folder).file("triangle.stl"))
 End if
 ```
 
 Calls are synchronous with a 30-second process timeout. Success preserves
-`{ok:true,stdout,stderr,exitCode:0,value}`. Failure has `ok:false`,
-`error:{code,message{,details}}`; process output/status are retained when
-available, while prelaunch errors do not invent an exit code.
+`{ok:true,stdout,stderr,exitCode:0,value}`; `render` also reports `pngValid`
+and the deterministic `pngSize`. Failure has `ok:false`,
+`error:{code,message{,path,stage,details}}`; process output/status are retained
+when available, while prelaunch errors do not invent an exit code.
 Missing executable, unsupported target/platform, invalid argument, launch
 failure, abnormal termination, nonzero CLI status and malformed protocol are
-explicit. Nonempty stderr alone is not failure. No PATH fallback, runtime
+explicit. `render`/`inspect`/`capabilities` decode the stdout envelope even when
+the process exits nonzero, so `error.code` reflects the CLI's structured
+`io_error`/`unsupported_format`/`invalid_stl` rather than a generic nonzero exit.
+Nonempty stderr alone is not failure. No PATH fallback, runtime
 download, unchecked chmod or global host error handler.
 
 ### CLI contract
 
-UTF-8, exactly one JSON line, LF on both systems, protocol version 1:
+`mesh-thumb` speaks a versioned envelope on stdout: `schema_version:1` and a
+top-level `success` Boolean, with `result` on success. Diagnostics go to stderr
+as one prefixed line `mesh-thumb: <code>: <message>`; exit codes are advisory
+(1 for CLI failures, 2 for usage errors, 0 for success):
 
 | Invocation | Status / stdout / stderr |
 | --- | --- |
-| `mesh-thumb greet --name "4D"` | 0 / `{"protocol":1,"message":"Hello, 4D!"}` + LF / empty |
-| `mesh-thumb --version` | 0 / `{"protocol":1,"version":"0.1.0"}` + LF / empty |
-| Invalid/unknown/missing/duplicate args, empty or malformed UTF-8 name | 2 / empty / error JSON below + LF |
+| `mesh-thumb --version` | 0 / `mesh-thumb 0.3.0` + LF (plain text, no JSON) / empty |
+| `mesh-thumb capabilities --json` | 0 / capabilities envelope / empty |
+| `mesh-thumb inspect FILE --json` | 0 / inspect envelope / empty |
+| `mesh-thumb render FILE -o OUT.png --size 64 --json` | 0 / render envelope / empty |
+| Missing/invalid input file | 1 / `{"schema_version":1,"success":false,"error":{"code":"io_error",...}}` / one diagnostic line |
+| Invalid/unknown/missing args | 2 / empty / usage text on stderr |
+
+A render envelope `result` carries `geometry` (`triangles`, `vertices`, bounds),
+`width`/`height`, `cache:"off"`, `input` (`format`, `file_size`, `path`),
+`normalize_scale`, `output`, `warnings` and `render_ms`. Rendering is
+deterministic: the same input/options produce byte-identical PNGs; only the
+staged input/output paths and `render_ms` vary between invocations. Inspect
+returns geometry/input/warnings without render fields.
 
 ```json
-{"protocol":1,"error":{"code":"invalid_arguments","message":"expected greet --name <non-empty UTF-8 name> or --version"}}
+{"schema_version":1,"success":false,"error":{"code":"io_error","message":"No such file or directory (os error 2)","path":"missing-input.stl","stage":null}}
 ```
 
 No shell is used. `4D.SystemWorker.new` takes **command-line Text**, not argv

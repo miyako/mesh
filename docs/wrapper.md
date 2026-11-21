@@ -132,12 +132,24 @@ binary under the component's harness):
 - [x] Universal macOS binary (v0.2.0+), Windows x64, Linux optional — §23.2 artifacts
 - [x] Stable JSON protocol with schema/versioning — [protocol.md](protocol.md)
 - [x] Stdin input for `render`/`inspect`, `cache prune` — CLI surface the wrapper maps to
-- [ ] Component API in the 4D repo (`MeshPreview.Thumbnailer`), per `quickdraw` / `4d-component-template` conventions
-- [ ] `SystemWorker` handling, timeouts, concurrency, PNG loading (component repo)
-- [ ] Packaging + wrapper test matrix from §22.5
+- [x] Component API implemented: `component/MeshPreviewThumbnailer` in this
+      monorepo, `cs.MeshPreview.Thumbnailer` with `render` / `inspect` /
+      `version` / `capabilities` (per `quickdraw` / `4d-component-template`
+      conventions, D15).
+- [x] `SystemWorker` handling: generic `_Process` adapter (synchronous,
+      stdin closed, UTF-8, 30 s timeout), `_CLI` resolution of the bundled
+      platform binary, envelope decoding per D16, PNG magic validation in
+      `render`. The wrapper is synchronous (single in-flight call); the
+      §22.5 timeout case is covered by `_Process`'s finite timeout, and
+      concurrency bounding is deferred until a real asynchronous caller
+      exists.
+- [ ] Packaging + binary provisioning: the `external_cli` adapter pins the
+      release ZIP (`asset-lock.json`) and assembles
+      `Resources/bin/<platform>/mesh-thumb[.exe]`; blocked until the
+      `v0.3.0` release exists (user push + release creation), which also
+      gates the real host runs (`test_4d.py` needs the assembled resource).
 
-Phase 6 starts in the component repository once the CLI contract here
-is stable; this document pins the contract side and is updated with
-the component's actual signatures when they exist (§22.2: define the
-exact 4D signatures per the target 4D conventions, do not invent
-incompatible abstractions).
+Phase 6 started in the component repository once the CLI contract here
+was stable; this document pins the contract side and this monorepo hosts
+the component implementation. The exact 4D signatures are defined in
+[the component docs](../component/MeshPreviewThumbnailer/component/MeshPreviewThumbnailer/Documentation/Classes/Thumbnailer.md).

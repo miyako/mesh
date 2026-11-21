@@ -7,5 +7,6 @@
   "language": "rust",
   "cli_source": "external-mesh-thumb-v1",
   "feature": "Deterministic STL/PLY thumbnail rendering",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "feature_class": "Thumbnailer"
 }

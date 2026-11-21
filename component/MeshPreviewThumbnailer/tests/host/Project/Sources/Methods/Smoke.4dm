@@ -1,13 +1,12 @@
 //%attributes = {"invisible":true}
 var $ignored : Integer
-var $parameter; $name; $target : Text
-var $folderPath : Text
-var $request; $result; $report : Object
-var $tool : cs.MeshPreview.Greeting
+var $parameter; $target : Text
+var $request; $result; $report; $options : Object
+var $tool : cs.MeshPreview.Thumbnailer
 var $requestFile; $statusFile : 4D.File
-var $renamedExecutable : 4D.File
-var $cases : Collection
+var $inputFile; $outputFile; $missingFile; $renamedExecutable : 4D.File
 var $invalid : Variant
+var $name : Text
 var HOST_StatusFile : 4D.File
 var HOST_Phase : Text
 var HOST_PreviousHandler : Text
@@ -32,8 +31,7 @@ $target:="macOS-universal"
 If (Is Windows)
 	$target:="Windows-x64"
 End if
-$tool:=cs.MeshPreview.Greeting.new($target)
-$cases:=New collection("world"; "path with spaces"; "quote \" and \\ slash"; "line\nbreak"; "日本語"; "$() ; & % !")
+$tool:=cs.MeshPreview.Thumbnailer.new($target)
 $report:=New object("success"; True; "finished"; False; "cases"; New collection)
 $report.compiled:=$tool._cli.compiled
 HOST_Phase:="renamed executable"
@@ -50,30 +48,55 @@ HOST_Phase:="feature cases"
 If ($request.expectCompiled#$report.compiled)
 	$report.success:=False
 End if
-For each ($name; $cases)
-	$result:=$tool.greet($name)
-	$report.cases.push($result)
-	If (Not($result.ok))
-		$report.success:=False
-	Else
-		If ($result.value.message#("Hello, "+$name+"!"))
-			$report.success:=False
-		End if
-	End if
-End for each
-$result:=$tool.greet("")
-$report.invalid:=$result
-If ($result.ok | ($result.exitCode#2))
+// Deterministic, host-independent wire cases: plain --version text and the
+// capabilities envelope. Render/inspect depend on staged paths and timing, so
+// they are asserted structurally under the execution section instead.
+$report.cases.push($tool.version())
+$report.cases.push($tool.capabilities())
+If (Not($report.cases[0].ok))
 	$report.success:=False
 End if
-$result:=$tool.version()
-$report.version:=$result
+If (Not($report.cases[1].ok))
+	$report.success:=False
+End if
+HOST_Phase:="render triangle"
+$inputFile:=$requestFile.parent.file("triangle.stl")
+$outputFile:=$requestFile.parent.file("render-tri.png")
+$options:=New object("size"; 64)
+$result:=$tool.render($inputFile; $outputFile; $options)
+$report.renderTri:=$result
 If (Not($result.ok))
 	$report.success:=False
-Else
-	If ($result.value.version#"0.1.0")
-		$report.success:=False
-	End if
+End if
+HOST_Phase:="render cube"
+$inputFile:=$requestFile.parent.file("cube.ply")
+$outputFile:=$requestFile.parent.file("render-cube.png")
+$options:=New object("size"; 128; "view"; "iso")
+$result:=$tool.render($inputFile; $outputFile; $options)
+$report.renderCube:=$result
+If (Not($result.ok))
+	$report.success:=False
+End if
+HOST_Phase:="inspect"
+$inputFile:=$requestFile.parent.file("triangle.stl")
+$result:=$tool.inspect($inputFile)
+$report.inspect:=$result
+If (Not($result.ok))
+	$report.success:=False
+End if
+HOST_Phase:="invalid input"
+$missingFile:=$requestFile.parent.file("missing-input.stl")
+$result:=$tool.inspect($missingFile)
+$report.invalid:=$result
+If ($result.ok | ($result.error.code#"io_error"))
+	$report.success:=False
+End if
+HOST_Phase:="invalid options"
+$outputFile:=$requestFile.parent.file("render-invalid.png")
+$result:=$tool.render($requestFile.parent.file("triangle.stl"); $outputFile; New object("size"; 0))
+$report.invalidArgs:=$result
+If ($result.ok | ($result.error.code#"invalid_argument"))
+	$report.success:=False
 End if
 HOST_Phase:="missing executable"
 $result:=cs.MeshPreview._CLI.new("missing-cli"; $target).execute(New collection("--version"))
@@ -81,7 +104,7 @@ $report.missing:=$result
 If ($result.error.code#"missing_executable")
 	$report.success:=False
 End if
-$result:=cs.MeshPreview.Greeting.new("unsupported-arm-target").version()
+$result:=cs.MeshPreview.Thumbnailer.new("unsupported-arm-target").version()
 $report.unsupported:=$result
 If ($result.error.code#"unsupported_architecture")
 	$report.success:=False
@@ -93,44 +116,39 @@ If ($result.error.code#"launch_failed")
 	$report.success:=False
 End if
 HOST_Phase:="malformed protocol"
-$result:=$tool._decode(New object("ok"; True; "stdout"; "not json"; "stderr"; ""; "exitCode"; 0); "message")
+$result:=$tool._decode(New object("ok"; True; "stdout"; "not json"; "stderr"; ""; "exitCode"; 0))
 $report.protocol:=$result
 If ($result.error.code#"invalid_protocol")
 	$report.success:=False
 End if
 $report.protocolTypes:=New collection
-For each ($name; New collection("{\"protocol\":true,\"message\":\"invalid\"}"; "{\"protocol\":false,\"message\":\"invalid\"}"))
-	$result:=$tool._decode(New object("ok"; True; "stdout"; $name; "stderr"; ""; "exitCode"; 0); "message")
+For each ($name; New collection("{\"schema_version\":true}"; "{\"schema_version\":false}"))
+	$result:=$tool._decode(New object("ok"; True; "stdout"; $name; "stderr"; ""; "exitCode"; 0))
 	$report.protocolTypes.push($result)
 	If ($result.ok | ($result.error.code#"invalid_protocol"))
 		$report.success:=False
 	End if
 End for each
-$result:=$tool._decode(New object("ok"; True; "stdout"; "{\"protocol\":null,\"message\":\"invalid\"}"; "stderr"; ""; "exitCode"; 0); "message")
+$result:=$tool._decode(New object("ok"; True; "stdout"; "{\"schema_version\":null}"; "stderr"; ""; "exitCode"; 0))
 $report.protocolNull:=$result
 If ($result.ok | ($result.error.code#"invalid_protocol"))
 	$report.success:=False
 End if
 $report.protocolScalars:=New collection
 For each ($name; New collection("true"; "false"; "null"; "1"; "[]"))
-	$result:=$tool._decode(New object("ok"; True; "stdout"; $name; "stderr"; ""; "exitCode"; 0); "message")
+	$result:=$tool._decode(New object("ok"; True; "stdout"; $name; "stderr"; ""; "exitCode"; 0))
 	$report.protocolScalars.push($result)
 	If ($result.ok | ($result.error.code#"invalid_protocol"))
 		$report.success:=False
 	End if
 End for each
-HOST_Phase:="File argument"
-$result:=cs.MeshPreview._CLI.new("mesh-thumb"; $target).execute(New collection("greet"; "--name"; $requestFile))
-$report.fileArgument:=$result
-If (Not($result.ok))
+$result:=$tool._decode(New object("ok"; True; "stdout"; "{\"schema_version\":1,\"success\":false,\"error\":{\"code\":\"io_error\",\"message\":\"intentional failure\",\"path\":null,\"stage\":null}}"; "stderr"; ""; "exitCode"; 0))
+$report.envelopeFailure:=$result
+If (($result.ok) | ($result.error.code#"io_error") | ($result.error.path#Null))
 	$report.success:=False
-Else
-	If (JSON Parse($result.stdout).message#("Hello, "+$parameter+"!"))
-		$report.success:=False
-	End if
 End if
-$report.rejectedArguments:=New collection
 HOST_Phase:="scalar arguments"
+$report.rejectedArguments:=New collection
 For each ($invalid; New collection(123; 1.25; True; False; Null; Current date; Current time; New collection; New object))
 	$result:=cs.MeshPreview._Process.new().execute($requestFile; New collection($invalid))
 	$report.rejectedArguments.push(New object("type"; Value type($invalid); "result"; $result))
@@ -154,20 +172,6 @@ If ($report.missingFile.ok | ($report.missingFile.error.code#"invalid_argument")
 End if
 If ($report.missingArguments.ok | ($report.missingArguments.error.code#"invalid_argument"))
 	$report.success:=False
-End if
-HOST_Phase:="Folder argument"
-$result:=cs.MeshPreview._CLI.new("mesh-thumb"; $target).execute(New collection("greet"; "--name"; $requestFile.parent))
-$report.folderArgument:=$result
-$folderPath:=$requestFile.parent.path
-If (Is Windows)
-	$folderPath:=$requestFile.parent.platformPath
-End if
-If (Not($result.ok))
-	$report.success:=False
-Else
-	If (JSON Parse($result.stdout).message#("Hello, "+$folderPath+"!"))
-		$report.success:=False
-	End if
 End if
 $report.finished:=True
 ON ERR CALL(HOST_PreviousHandler; ek local)

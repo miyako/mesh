@@ -15,12 +15,24 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 CONTRACT = json.loads((ROOT / "tests/host/contract.json").read_text(encoding="utf-8"))
 
+# Concrete fixture values that re.fullmatch each `matches` assertion pattern.
+MATCH_SAMPLES = {
+    "/invalid/stderr": "mesh-thumb: io_error: missing input file (os error 2)\n",
+    "/invalid/error/path": "/staged/dir/missing-input.stl",
+}
+
 
 def valid_status(compiled=False):
     status = {"success": True, "finished": True, "compiled": compiled,
               "cases": [{"ok": True, **copy.deepcopy(case)} for case in CONTRACT["feature"]["cases"]],
               "fileArgument": {"ok": True, "stdout": "file round trip", "stderr": "", "exitCode": 0},
               "folderArgument": {"ok": True, "stdout": "folder round trip", "stderr": "", "exitCode": 0}}
+    for path in CONTRACT["execution"]["successPaths"]:
+        tokens = path.split("/")[1:]
+        destination = status
+        for token in tokens[:-1]:
+            destination = destination.setdefault(token, {})
+        destination[tokens[-1]] = {"ok": True, "stdout": "envelope", "stderr": "", "exitCode": 0}
     def apply_assertions(value, assertions):
         for assertion in assertions:
             tokens = assertion["path"].split("/")[1:]
@@ -38,6 +50,10 @@ def valid_status(compiled=False):
                 destination[key] = [{} for _ in range(assertion["length"])]
             if "each" in assertion:
                 destination[key] = [apply_assertions(entry, assertion["each"]) for entry in destination[key]]
+            if "matches" in assertion:
+                if assertion["path"] not in MATCH_SAMPLES:
+                    raise AssertionError("no fixture sample for matches assertion " + assertion["path"])
+                destination[key] = MATCH_SAMPLES[assertion["path"]]
         return value
 
     for section in ("feature", "execution"):
@@ -184,9 +200,9 @@ class ContractTests(unittest.TestCase):
 
     def test_execution_successes_preserve_streams_without_feature_value(self):
         status = valid_status()
-        status["fileArgument"]["stderr"] = "diagnostic, not a failure"
+        status["renderTri"]["stderr"] = "diagnostic, not a failure"
         runner.validate_status(status, CONTRACT, False)
-        status["folderArgument"]["error"] = {"code": "hidden_failure"}
+        status["renderTri"]["error"] = {"code": "hidden_failure"}
         with self.assertRaises(ValueError):
             runner.validate_status(status, CONTRACT, False)
 
