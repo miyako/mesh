@@ -114,8 +114,12 @@ jobs:
           BIN="$PWD/dist/${{ matrix.bin_name }}"
           "$BIN" capabilities
           "$BIN" --version
-          "$BIN" render fixtures/cube_ascii.stl -o "$PWD/cube.png"
-          test -s "$PWD/cube.png"
+          # Output MUST NOT land in the workspace: it would dirty
+          # `git status` and trip package.py's clean-checkout guard
+          # ("package from a clean committed checkout"). RUNNER_TEMP is
+          # outside the checkout on every runner OS.
+          "$BIN" render fixtures/cube_ascii.stl -o "$RUNNER_TEMP/cube.png"
+          test -s "$RUNNER_TEMP/cube.png"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
