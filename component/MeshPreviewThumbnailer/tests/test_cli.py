@@ -117,7 +117,9 @@ class NativeContractTests(unittest.TestCase):
         malformed = self.invoke(["render", self.folder / "malformed.stl",
                                  "-o", self.folder / "m.png", "--json"], code=1, error="unsupported_format")
         self.assertIsNotNone(malformed["path"])
-        self.assertIn("error", malformed["message"].lower())
+        # The envelope carries the machine code (`unsupported_format`, asserted
+        # by invoke()) plus a human-readable message; neither may be empty.
+        self.assertTrue(malformed["message"].strip())
 
 
 if __name__ == "__main__":

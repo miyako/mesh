@@ -152,11 +152,12 @@ binary under the component's harness):
       actual compiler (no `Trim`; `Match regex` position outputs instead of a
       groups Collection; PNG signature checked byte-wise via `DOCUMENT TO BLOB`,
       no `FileHandle`).
-- [ ] Packaging + binary provisioning: the `external_cli` adapter pins the
-      release ZIP (`asset-lock.json`) and assembles
-      `Resources/bin/<platform>/mesh-thumb[.exe]`; blocked until the
-      `v0.3.0` release exists (user push + release creation), which also
-      gates the real host runs (`test_4d.py` needs the assembled resource).
+- [x] Packaging + binary provisioning: the `external_cli` adapter pins the
+      released `v0.3.0` ZIP (`asset-lock.json`, real released sidecar digests)
+      and assembles `Resources/bin/<platform>/mesh-thumb[.exe]`; source-host
+      smoke and compiled-package host runs pass on real tool4d 20.7/101905
+      (macOS ARM64). Windows x64 binary is provisioned and digest-bound; native
+      Windows 4D loading remains a separate hosted check (`not_run` locally).
 
 Phase 6 started in the component repository once the CLI contract here
 was stable; this document pins the contract side and this monorepo hosts

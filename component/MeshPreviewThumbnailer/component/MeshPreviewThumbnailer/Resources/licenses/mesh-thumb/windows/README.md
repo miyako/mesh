@@ -1,0 +1,155 @@
+# mesh-thumb
+
+Headless STL/PLY → PNG thumbnail renderer, written in Rust. No GPU, no
+display server, no GUI: it reads a mesh or point cloud from disk and
+writes a PNG. Built for build systems, file managers and asset previews
+that need a fast, deterministic thumbnail with zero dependencies on the
+system's graphics stack.
+
+## Features
+
+- **Formats**: ASCII and binary STL; ASCII and binary (LE/BE) PLY with
+  per-vertex colors, normals and polygon faces (fan-triangulated).
+  Content-based detection, not extension-based.
+- **Rendering**: CPU rasterizer with orthographic views (iso, top,
+  front, side), procedural matcap shading, supersampling for
+  anti-aliasing, solid or transparent backgrounds, point-cloud splats.
+- **Deterministic**: identical inputs produce byte-identical PNGs
+  (a real cache *and* golden-image tests enforce this).
+- **Pipeline-friendly**: `--json` output, stable error codes, exit
+  code 0/1/2 contract, batched rendering over many files.
+- **Hardened**: parses untrusted files under explicit resource limits,
+  atomic writes, no `unsafe`, typed errors instead of panics.
+  See [docs/security.md](docs/security.md).
+
+## Install
+
+```sh
+cargo build --release
+# binary at target/release/mesh-thumb
+```
+
+Requires Rust ≥ 1.85 (edition 2021). No system libraries.
+
+## Usage
+
+```sh
+# Single thumbnail
+mesh-thumb render model.stl -o thumb.png
+
+# Custom size and view
+mesh-thumb render model.ply --size 512 --view iso --background '#20242b' -o thumb.png
+
+# Transparent background
+mesh-thumb render model.stl --background transparent -o icon.png
+
+# Inspect a file without rendering
+mesh-thumb inspect model.stl
+
+# Batch-render a directory of files (4 workers, up to 16)
+mesh-thumb batch --out thumbs/ --cache-dir .mesh-cache model_*.stl part_*.ply
+
+# Machine-readable output
+mesh-thumb render model.stl --json
+mesh-thumb capabilities --json
+
+# Pipe geometry in (render needs -o; inspect doesn't)
+cat model.stl | mesh-thumb render - -o thumb.png
+cat model.ply | mesh-thumb inspect -
+
+# Cache maintenance: drop entries older than 30 days + orphans
+mesh-thumb cache prune --dir .mesh-cache --older-than 30
+mesh-thumb cache prune --dir .mesh-cache --all   # everything
+```
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (batches with per-file failures report `failed > 0`) |
+| 1 | A command failed |
+| 2 | Usage error |
+
+### Cache
+
+`--cache-dir` keeps thumbnails keyed by content hash + settings;
+identical renders are cache hits *before parsing* the file. The cache is
+safe to share across concurrent batch workers and degrades gracefully if
+corrupted. See [docs/decisions.md](docs/decisions.md).
+
+### Performance caveats
+
+Rendering is single-threaded per file and CPU-bound. Supersampling
+(`--quality`) dominates cost: each level multiplies the rasterization
+work by 4 (quality 4 = 16× the quality-1 sample count). Expect a few
+milliseconds for small meshes at default settings and roughly linear
+growth with vertex/face count; very large meshes are truncated under the
+resource limits reported by `capabilities` (see
+[docs/security.md](docs/security.md)). `batch` fans files out across 4
+workers (configurable up to 16) to use multiple cores; per-file renders
+are single-core by design so thumbnails stay byte-deterministic. Timing
+baselines live in [docs/decisions.md](docs/decisions.md) (benchmarked
+with `cargo bench`).
+
+## Documentation
+
+- [cli.md](docs/cli.md) — user-facing manual: every command, option, exit code
+- [architecture.md](docs/architecture.md) — module map and render pipeline
+- [format-support.md](docs/format-support.md) — what parses, what renders, honest limits
+- [decisions.md](docs/decisions.md) — why things are the way they are
+- [security.md](docs/security.md) — threat model and resource limits
+- [protocol.md](docs/protocol.md) — CLI + JSON contract, error codes, versioning
+- [wrapper.md](docs/wrapper.md) — Phase 6 `MeshPreview.Thumbnailer` wrapper contract
+- [acceptance.md](docs/acceptance.md) — spec §26 acceptance checklist + phase gates
+
+## Development
+
+```sh
+cargo fmt -- --check
+cargo clippy --all-targets        # zero warnings expected
+cargo test --all-targets          # unit + integration + golden + fuzz-smoke
+cargo bench                       # render timing benchmarks
+```
+
+- `tests/cli.rs` — command-level integration tests against the real binary
+- `tests/golden_images.rs` — pixel-pinned golden refs in `tests/golden/ref/`
+- `tests/fuzz_smoke.rs` — deterministic mutation walk; panics are bugs
+- `benches/render_bench.rs` — self-timed render benchmarks
+
+CI (`.github/workflows/ci.yml`) runs fmt/clippy/test/bench on Ubuntu and
+macOS with `-D warnings`.
+
+## Releasing
+
+Tag a release and push the tag; `.github/workflows/release.yml` builds
+release binaries on Linux, macOS and Windows, smoke-tests them, and
+attaches them to a GitHub Release:
+
+- `mesh-thumb-linux-x86_64` (Ubuntu, glibc)
+- `mesh-thumb-macos-universal` (macOS 14+, **arm64 + x86_64** in one
+  universal binary, built and merged with `lipo`)
+- `mesh-thumb-windows-x86_64.exe` (Windows)
+
+Each Release also carries a `checksums.txt` (SHA-256 of every attached
+binary) generated by the workflow. Releasing:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Run `cargo package --list` before tagging to sanity-check the crate
+contents for crates.io. The workflow publishes `checksums.txt` (SHA-256
+of every attached binary) alongside the binaries.
+
+## Scope
+
+This project intentionally does *not* implement: materials/textures,
+animation, GPU backends (the CLI reserves a `gpu` backend slot that
+reports `backend_unavailable`), or formats beyond STL/PLY. It renders
+single stills with a fixed shading model. See
+[docs/format-support.md](docs/format-support.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

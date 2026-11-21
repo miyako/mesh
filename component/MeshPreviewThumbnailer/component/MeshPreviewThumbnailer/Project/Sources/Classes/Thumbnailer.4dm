@@ -52,9 +52,13 @@ Function render($InputFile : 4D.File; $OutputFile : 4D.File; $options : Object)-
 	If ($options#Null)
 		$size:=0
 		If ((Value type($options.size)#Is undefined) & (Value type($options.size)#Is null))
-			If (((Value type($options.size)=Is integer) | (Value type($options.size)=Is longint)) & ($options.size>0))
-				$size:=$options.size
-				$arguments.push("--size"; String($size))
+			If ((Value type($options.size)=Is real) | (Value type($options.size)=Is integer) | (Value type($options.size)=Is longint))
+				If ($options.size>0)
+					$size:=$options.size
+					$arguments.push("--size"; String($size))
+				Else
+					return New object("ok"; False; "error"; New object("code"; "invalid_argument"; "message"; "options.size must be a positive integer"))
+				End if
 			Else
 				return New object("ok"; False; "error"; New object("code"; "invalid_argument"; "message"; "options.size must be a positive integer"))
 			End if
@@ -76,9 +80,13 @@ Function render($InputFile : 4D.File; $OutputFile : 4D.File; $options : Object)-
 			End if
 		End if
 		If ((Value type($options.quality)#Is undefined) & (Value type($options.quality)#Is null))
-			If (((Value type($options.quality)=Is integer) | (Value type($options.quality)=Is longint)) & (($options.quality>=1) & ($options.quality<=8)))
-				$quality:=$options.quality
-				$arguments.push("--quality"; String($quality))
+			If ((Value type($options.quality)=Is real) | (Value type($options.quality)=Is integer) | (Value type($options.quality)=Is longint))
+				If (($options.quality>=1) & ($options.quality<=8))
+					$quality:=$options.quality
+					$arguments.push("--quality"; String($quality))
+				Else
+					return New object("ok"; False; "error"; New object("code"; "invalid_argument"; "message"; "options.quality must be an integer from 1 to 8"))
+				End if
 			Else
 				return New object("ok"; False; "error"; New object("code"; "invalid_argument"; "message"; "options.quality must be an integer from 1 to 8"))
 			End if
@@ -141,9 +149,19 @@ Function _decode($result : Object)->$decoded : Object
 		$result.error:=New object("code"; "invalid_protocol"; "message"; "CLI response must be a JSON object"; "details"; $parseErrors)
 		return $result
 	End if
+	If ((Value type($payload.schema_version)#Is real) & (Value type($payload.schema_version)#Is integer) & (Value type($payload.schema_version)#Is longint))
+		$result.ok:=False
+		$result.error:=New object("code"; "invalid_protocol"; "message"; "Unsupported CLI protocol version")
+		return $result
+	End if
 	If ($payload.schema_version#1)
 		$result.ok:=False
 		$result.error:=New object("code"; "invalid_protocol"; "message"; "Unsupported CLI protocol version")
+		return $result
+	End if
+	If (Value type($payload.success)#Is boolean)
+		$result.ok:=False
+		$result.error:=New object("code"; "invalid_protocol"; "message"; "CLI response success must be a Boolean")
 		return $result
 	End if
 	If ($payload.success#True)

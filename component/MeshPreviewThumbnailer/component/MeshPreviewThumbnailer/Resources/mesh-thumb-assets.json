@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "repository": "miyako/mesh",
+  "version": "0.3.0",
+  "source_revision": "25c2775ab5a3c30c3122545d8447a73640ba0f44",
+  "tag": "v0.3.0",
+  "assets": {
+    "macos": {
+      "url": "https://github.com/miyako/mesh/releases/download/v0.3.0/mesh-thumb-v0.3.0-universal-apple-darwin.zip",
+      "sha256": "a100371a0cbdb123682c30412b38afa1b0258e5203c8756835756b38371806c0",
+      "target": "universal-apple-darwin",
+      "binary_sha256": "c29acf39fb0a71e20a8771c1f1f32d173c4215a9009bfc3ae8bc71fd7bdf3726",
+      "manifest_sha256": "87fbddf4ccb9ffc93f83393a905926ea180f67919ae1da100afedb778bbbfca0"
+    },
+    "windows": {
+      "url": "https://github.com/miyako/mesh/releases/download/v0.3.0/mesh-thumb-v0.3.0-x86_64-pc-windows-msvc.zip",
+      "sha256": "8760a7b8c8650da41fd947c4bde2dac7a916727ba1ae7505ef37d42c936de772",
+      "target": "x86_64-pc-windows-msvc",
+      "binary_sha256": "9144473e87e8bf2d8da0ccc1c00dca7693fd4c2faf8356680dc1a1c3c402e5fa",
+      "manifest_sha256": "c7ed4c2cb1840d31bde10d6830db86b40d1026c356b26d5aba1107a34f4ba6d5"
+    }
+  }
+}

@@ -67,7 +67,7 @@ with each milestone (spec §28.6).
 | 3 PLY + point clouds | ✅ |
 | 4 Production CLI/cache/batch | ✅ shipping since v0.1.0 (stdin + cache prune added v0.2.0) |
 | 5 Hardening + release | ✅ v0.1.0/v0.2.0, checksums, universal macOS |
-| 6 4D wrapper | 🚧 component implemented in `component/MeshPreviewThumbnailer` (this monorepo, D15/D16): `cs.MeshPreview.Thumbnailer` API + envelope decoding + PNG validation; unit suite green (`253` OK / `45` skipped) and real tool4d compile green (20.7/101905 — `x86_64_generic` + `arm64_macOS_lib`, bindings checksums; compiler regenerated `Resources/en.lproj/syntaxEN.json` with `Thumbnailer`, no Greeting). Host runs and binary provisioning still gated on the v0.3.0 release (external_cli asset-lock) |
+| 6 4D wrapper | ✅ `component/MeshPreviewThumbnailer` (this monorepo, D15/D16): `cs.MeshPreview.Thumbnailer` API + envelope decoding + PNG validation; suite green and real-host source/compiled runs green on real tool4d 20.7/101905 with the released v0.3.0 binary provisioned from the asset-lock (real sidecar digests, `source_revision 25c2775`, rustc 1.100.0). See `component/MeshPreviewThumbnailer/build/acceptance.json` |
 | 7 Optional GPU | ⬜ deferred (backlog) |
 
-Last updated: component compile round (real tool4d; version/pngValid hardened by actual compile errors).
+Last updated: 4D wrapper host-gate round — asset-lock from real v0.3.0 sidecars and full source+compiled tool4d host runs green; scalar type-guard fixes (real 4D `Value type` numbering) resolved the previous 4DRT 15 abort.

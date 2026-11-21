@@ -2,3 +2,7 @@
 *.png binary
 *.zip binary
 *.4DZ binary
+# Upstream release sidecar notices: preserve exact released bytes. The
+# manifest.json digests in cli/asset-lock.json bind these files byte-for-byte;
+# the Windows release ZIP ships Cargo.lock/LICENSE/README/docs with CRLF.
+component/*/Resources/licenses/mesh-thumb/** binary

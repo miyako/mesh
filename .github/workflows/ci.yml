@@ -88,7 +88,10 @@ jobs:
         working-directory: component/MeshPreviewThumbnailer
         run: |
           if [ -f cli/asset-lock.json ]; then
-            python3 scripts/build_cli.py
+            # build_cli.py requires an explicit native target; compute it on
+            # the actual runner (macos-latest is arm64).
+            TARGET="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from build_cli import native_target; print(native_target())')"
+            python3 scripts/build_cli.py --target "$TARGET"
           else
             echo "asset-lock pending; native CLI cases will skip"
           fi
