@@ -162,7 +162,7 @@ existing result fields.
 
 ## D16. Envelope-on-stdout decoding; plain-text --version; PNG validation
 
-`MeshPreview.Thumbnailer` (component `MeshPreviewThumbnailer`, class
+`MeshPreview.Thumbnailer` (component `mesh`, class
 `Thumbnailer`) treats the stdout JSON envelope as authoritative even
 when the process exit code is nonzero: an `io_error`/`unsupported_format`
 in the envelope is surfaced as the wrapper `error` (`code`, `message`,

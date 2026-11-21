@@ -48,9 +48,9 @@ def load_config(root=ROOT, *, initialized=False, repository=None, tag=None):
         if config.get("cli_source") not in (None, "external-mesh-thumb-v1"):
             raise ValueError("unsupported CLI source adapter")
         if config.get("cli_source") == "external-mesh-thumb-v1" and (
-                config["repository"] != "MeshPreviewThumbnailer" or config["cli"] != "mesh-thumb"
+                config["repository"] != "mesh" or config["cli"] != "mesh-thumb"
                 or config.get("language") != "rust"):
-            raise ValueError("external mesh-thumb adapter requires MeshPreviewThumbnailer identity and Rust provenance")
+            raise ValueError("external mesh-thumb adapter requires mesh identity and Rust provenance")
         validate_initialization(
             config["repository"], config.get("namespace", ""), config["cli"],
             config.get("language"), config.get("feature", ""))

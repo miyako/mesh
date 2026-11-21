@@ -1,6 +1,6 @@
 {
-  "name": "MeshPreviewThumbnailer",
-  "version": "0.1.0",
+  "name": "mesh",
+  "version": "20.0.0",
   "private": true,
   "description": "Deterministic STL/PLY thumbnail rendering",
   "license": "MIT",

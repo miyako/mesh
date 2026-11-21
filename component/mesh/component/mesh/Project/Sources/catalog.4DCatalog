@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE base SYSTEM "http://www.4d.com/dtd/2007/base.dtd">
-<base name="MeshPreviewThumbnailer" uuid="6DD318853529598D92249B127A6B12ED" collation_locale="en">
+<base name="mesh" uuid="A2A104C3F5A9595FBDB4FF871C97901B" collation_locale="en">
   <schema name="DEFAULT_SCHEMA"/>
   <base_extra><journal_file journal_file_enabled="false"/></base_extra>
 </base>

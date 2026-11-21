@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "initialized": true,
-  "repository": "MeshPreviewThumbnailer",
+  "repository": "mesh",
   "namespace": "MeshPreview",
   "cli": "mesh-thumb",
   "language": "rust",
   "cli_source": "external-mesh-thumb-v1",
   "feature": "Deterministic STL/PLY thumbnail rendering",
-  "version": "0.1.0",
+  "version": "20.0.0",
   "feature_class": "Thumbnailer"
 }

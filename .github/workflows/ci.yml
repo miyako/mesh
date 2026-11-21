@@ -82,22 +82,22 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pinned workflow validator dependency
-        working-directory: component/MeshPreviewThumbnailer
+        working-directory: component/mesh
         run: python3 -m pip install -r tooling/requirements-workflow.txt
       - name: Install verified native CLI (once release pins exist)
-        working-directory: component/MeshPreviewThumbnailer
+        working-directory: component/mesh
         run: |
           if [ -f cli/asset-lock.json ]; then
             # build_cli.py requires an explicit native target; compute it on
             # the actual runner (macos-latest is arm64). This checkout is the
-            # mesh monorepo, so pass the component's destination identity
-            # explicitly: $GITHUB_REPOSITORY here is miyako/mesh, which does
-            # not equal template.json.repository (MeshPreviewThumbnailer).
+            # mesh monorepo; the component's destination identity is the repo
+            # basename (mesh), so pass the matching GitHub identity explicitly
+            # rather than relying on the monorepo environment variable.
             TARGET="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from build_cli import native_target; print(native_target())')"
-            python3 scripts/build_cli.py --repository miyako/MeshPreviewThumbnailer --target "$TARGET"
+            python3 scripts/build_cli.py --repository miyako/mesh --target "$TARGET"
           else
             echo "asset-lock pending; native CLI cases will skip"
           fi
       - name: Wrapper unit and contract suite
-        working-directory: component/MeshPreviewThumbnailer
+        working-directory: component/mesh
         run: python3 -m unittest discover -s tests

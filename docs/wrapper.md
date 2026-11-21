@@ -132,7 +132,7 @@ binary under the component's harness):
 - [x] Universal macOS binary (v0.2.0+), Windows x64, Linux optional — §23.2 artifacts
 - [x] Stable JSON protocol with schema/versioning — [protocol.md](protocol.md)
 - [x] Stdin input for `render`/`inspect`, `cache prune` — CLI surface the wrapper maps to
-- [x] Component API implemented: `component/MeshPreviewThumbnailer` in this
+- [x] Component API implemented: `component/mesh` in this
       monorepo, `cs.MeshPreview.Thumbnailer` with `render` / `inspect` /
       `version` / `capabilities` (per `quickdraw` / `4d-component-template`
       conventions, D15).
@@ -162,4 +162,4 @@ binary under the component's harness):
 Phase 6 started in the component repository once the CLI contract here
 was stable; this document pins the contract side and this monorepo hosts
 the component implementation. The exact 4D signatures are defined in
-[the component docs](../component/MeshPreviewThumbnailer/component/MeshPreviewThumbnailer/Documentation/Classes/Thumbnailer.md).
+[the component docs](../component/mesh/component/mesh/Documentation/Classes/Thumbnailer.md).

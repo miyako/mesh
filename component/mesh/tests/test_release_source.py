@@ -28,8 +28,8 @@ class ReleaseSourceTests(unittest.TestCase):
         external = (json.loads((ROOT / "template.json").read_text()).get("cli_source")
                     == "external-mesh-thumb-v1")
         if external:
-            self.repository = "owner/MeshPreviewThumbnailer"
-            self.origin_url = "https://github.com/owner/MeshPreviewThumbnailer.git"
+            self.repository = "owner/mesh"
+            self.origin_url = "https://github.com/owner/mesh.git"
         self.workspace = ROOT / (".release-source-test-" + uuid.uuid4().hex)
         self.root = self.workspace / "source"
         self.origin = self.workspace / "origin.git"

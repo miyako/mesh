@@ -147,9 +147,9 @@ Host code uses `cs.MeshPreview.Thumbnailer`; internal code uses `cs.Thumbnailer`
 convention**, not private access or an exported-class manifest.
 
 Class docs:
-[Thumbnailer](component/MeshPreviewThumbnailer/Documentation/Classes/Thumbnailer.md),
-[_CLI](component/MeshPreviewThumbnailer/Documentation/Classes/_CLI.md),
-[_Process](component/MeshPreviewThumbnailer/Documentation/Classes/_Process.md).
+[Thumbnailer](component/mesh/Documentation/Classes/Thumbnailer.md),
+[_CLI](component/mesh/Documentation/Classes/_CLI.md),
+[_Process](component/mesh/Documentation/Classes/_Process.md).
 The actual compiler generates `Resources/en.lproj/syntaxEN.json`, preventing
 stale completion metadata.
 
