@@ -62,3 +62,26 @@ jobs:
         run: |
           ./target/release/mesh-thumb capabilities
           ./target/release/mesh-thumb --help | head -5
+
+  # Phase 6 MeshPreview.Thumbnailer wrapper (spec §22): the in-repo
+  # component is validated by its own Python suite (unit, host-contract
+  # and release-machinery tests). Runs on macOS: the native CLI cases in
+  # test_cli self-skip until cli/asset-lock.json pins a released
+  # mesh-thumb, then require the real native host (windows/linux runners
+  # cannot verify the pinned universal/PE artifacts).
+  component:
+    name: component (MeshPreview.Thumbnailer)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install verified native CLI (once release pins exist)
+        working-directory: component/MeshPreviewThumbnailer
+        run: |
+          if [ -f cli/asset-lock.json ]; then
+            python3 scripts/build_cli.py
+          else
+            echo "asset-lock pending; native CLI cases will skip"
+          fi
+      - name: Wrapper unit and contract suite
+        working-directory: component/MeshPreviewThumbnailer
+        run: python3 -m unittest discover -s tests
