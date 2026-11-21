@@ -81,9 +81,11 @@ def require_toolchain(language):
         raise ValueError(f"{language} {'.'.join(map(str, minimum))} or newer is required")
 
 
-def build(root, target, language=None, cross=False):
+def build(root, target, language=None, cross=False, repository=None):
     root = Path(root).resolve()
-    config = load_config(root, initialized=True, repository=os.environ.get("GITHUB_REPOSITORY"))
+    if repository is None:
+        repository = os.environ.get("GITHUB_REPOSITORY")
+    config = load_config(root, initialized=True, repository=repository)
     native = native_target()
     if target not in TARGETS or (native != target and not cross):
         raise ValueError("requested target does not match the native host architecture")
@@ -168,11 +170,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--language", choices=("go", "rust", "cpp"))
+    parser.add_argument("--repository",
+                        help="destination owner/name; defaults to $GITHUB_REPOSITORY "
+                             "(required when this script runs on a checkout whose "
+                             "remote repository differs from template.json.repository, "
+                             "e.g. a component hosted inside a monorepo)")
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--cross", action="store_true", help="Go on macOS only; foreign binaries are build-only")
     args = parser.parse_args()
     try:
-        print(build(args.root, args.target, args.language, args.cross))
+        print(build(args.root, args.target, args.language, args.cross, args.repository))
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
         parser.exit(2, f"CLI build failed: {error}\n")
 

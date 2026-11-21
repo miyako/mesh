@@ -89,9 +89,12 @@ jobs:
         run: |
           if [ -f cli/asset-lock.json ]; then
             # build_cli.py requires an explicit native target; compute it on
-            # the actual runner (macos-latest is arm64).
+            # the actual runner (macos-latest is arm64). This checkout is the
+            # mesh monorepo, so pass the component's destination identity
+            # explicitly: $GITHUB_REPOSITORY here is miyako/mesh, which does
+            # not equal template.json.repository (MeshPreviewThumbnailer).
             TARGET="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from build_cli import native_target; print(native_target())')"
-            python3 scripts/build_cli.py --target "$TARGET"
+            python3 scripts/build_cli.py --repository miyako/MeshPreviewThumbnailer --target "$TARGET"
           else
             echo "asset-lock pending; native CLI cases will skip"
           fi
