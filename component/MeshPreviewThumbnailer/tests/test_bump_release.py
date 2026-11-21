@@ -19,6 +19,8 @@ import rename_feature
 
 class BumpReleaseTests(unittest.TestCase):
     def setUp(self):
+        if not (ROOT / "cli-starters").is_dir():
+            self.skipTest("bump fixture tests require retained cli-starters/; the external mesh-thumb bump path is covered by test_release_source")
         self.root = ROOT / (".bump-release-test-" + uuid.uuid4().hex)
         self.root.mkdir()
         self.addCleanup(shutil.rmtree, self.root)

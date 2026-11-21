@@ -5,6 +5,7 @@
   "namespace": "MeshPreview",
   "cli": "mesh-thumb",
   "language": "rust",
+  "cli_source": "external-mesh-thumb-v1",
   "feature": "Deterministic STL/PLY thumbnail rendering",
   "version": "0.1.0"
 }

@@ -45,6 +45,12 @@ def load_config(root=ROOT, *, initialized=False, repository=None, tag=None):
     if manifest.get("version") != config["version"]:
         raise ValueError("package.json version must match template.json version")
     if config["initialized"]:
+        if config.get("cli_source") not in (None, "external-mesh-thumb-v1"):
+            raise ValueError("unsupported CLI source adapter")
+        if config.get("cli_source") == "external-mesh-thumb-v1" and (
+                config["repository"] != "MeshPreviewThumbnailer" or config["cli"] != "mesh-thumb"
+                or config.get("language") != "rust"):
+            raise ValueError("external mesh-thumb adapter requires MeshPreviewThumbnailer identity and Rust provenance")
         validate_initialization(
             config["repository"], config.get("namespace", ""), config["cli"],
             config.get("language"), config.get("feature", ""))
@@ -94,6 +100,9 @@ def assemble(root=ROOT):
     from build_provenance import verify
     root = Path(root)
     config = load_config(root, initialized=True, repository=os.environ.get("GITHUB_REPOSITORY"))
+    if config.get("cli_source") == "external-mesh-thumb-v1":
+        from external_cli import assemble as assemble_external
+        return assemble_external(root)
     destination = root / "component" / config["repository"] / "Resources" / "bin"
     if any(path.is_symlink() for path in [destination, *destination.parents]):
         raise ValueError("resource assembly destination must not traverse symlinks")

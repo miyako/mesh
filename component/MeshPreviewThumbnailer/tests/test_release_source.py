@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,17 +25,31 @@ class ReleaseSourceTests(unittest.TestCase):
     origin_url = "https://github.com/owner/CaseTools.git"
 
     def setUp(self):
+        external = (json.loads((ROOT / "template.json").read_text()).get("cli_source")
+                    == "external-mesh-thumb-v1")
+        if external:
+            self.repository = "owner/MeshPreviewThumbnailer"
+            self.origin_url = "https://github.com/owner/MeshPreviewThumbnailer.git"
         self.workspace = ROOT / (".release-source-test-" + uuid.uuid4().hex)
         self.root = self.workspace / "source"
         self.origin = self.workspace / "origin.git"
         self.root.mkdir(parents=True)
         self.addCleanup(shutil.rmtree, self.workspace)
-        for name in ("component", "cli-starters", "tests/host", ".github/workflows",
+        for name in ("component", "cli" if external else "cli-starters", "tests/host", ".github/workflows",
                      "scripts", "tooling"):
-            shutil.copytree(ROOT / name, self.root / name)
+            shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns(
+                "DerivedData", "Libraries", "__pycache__", "bin", "mesh-thumb"))
         for name in ("template.json", "package.json", "README.md", "release-policy.json",
                      "workflow-contract.json", "tests/test_cli.py", "tests/cli-contract.json"):
             shutil.copy2(ROOT / name, self.root / name)
+        # Expectations below assume a 0.1.0 baseline; pin the fixture so a source bump does not break them.
+        for name in ("template.json", "package.json"):
+            path = self.root / name
+            text = path.read_text(encoding="utf-8")
+            pinned = re.sub(r'^(  "version": )"[^"]*"', r'\1"0.1.0"', text, count=1, flags=re.M)
+            if pinned == text and '"version": "0.1.0"' not in text:
+                raise AssertionError("could not pin fixture version in " + name)
+            path.write_text(pinned, encoding="utf-8")
         self.environment = patch.dict(os.environ, {"GITHUB_REPOSITORY": self.repository})
         self.environment.start()
         self.addCleanup(self.environment.stop)
@@ -46,10 +61,24 @@ class ReleaseSourceTests(unittest.TestCase):
         self.git("config", "user.email", "source-fixture@example.invalid")
         self.git("remote", "add", "origin", self.origin_url)
         self.git("commit", "-q", "--allow-empty", "-m", "fixture")
-        initialize.initialize(self.root, "CaseTools", "IndependentNS", "case-cli",
-                              "go", "A source release fixture")
+        if external:
+            lock = {"schema": 1, "repository": "miyako/mesh", "version": "0.3.0",
+                    "tag": "v0.3.0", "source_revision": "a" * 40, "assets": {
+                        platform: {"url": "https://github.com/miyako/mesh/releases/download/v0.3.0/" + platform + ".zip",
+                                   "target": target, "sha256": "a" * 64,
+                                   "binary_sha256": "b" * 64, "manifest_sha256": "c" * 64}
+                        for platform, target in (("macos", "universal-apple-darwin"),
+                                                  ("windows", "x86_64-pc-windows-msvc"))}}
+            (self.root / "cli/asset-lock.json").write_text(json.dumps(lock) + "\n")
+        else:
+            initialize.initialize(self.root, "CaseTools", "IndependentNS", "case-cli",
+                                  "go", "A source release fixture")
         self.commit("initialized fixture")
         subprocess.run(["git", "init", "-q", "--bare", str(self.origin)],
+                       check=True, capture_output=True, text=True)
+        # The fixture deletes origin's main in some tests; tolerate default-branch
+        # naming differences by allowing deletion of the bare repository's current branch.
+        subprocess.run(["git", "-C", str(self.origin), "config", "receive.denyDeleteCurrent", "ignore"],
                        check=True, capture_output=True, text=True)
         self.git("config", "url." + str(self.origin) + ".insteadOf", self.origin_url)
         self.git("push", "-q", "origin", "HEAD:refs/heads/main")
@@ -62,6 +91,18 @@ class ReleaseSourceTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(["git", *args], cwd=self.root, check=True,
                               capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    def test_external_bump_preserves_upstream_version_and_release_pins(self):
+        if not (self.root / "cli/asset-lock.json").exists():
+            self.skipTest("external component adapter only")
+        lock = (self.root / "cli/asset-lock.json").read_bytes()
+        contract = (self.root / "tests/cli-contract.json").read_bytes()
+        result = release_source.bump(self.root, self.repository, "minor", self.env())
+        self.assertEqual(result["version"], "0.2.0")
+        self.assertEqual((self.root / "cli/asset-lock.json").read_bytes(), lock)
+        self.assertEqual((self.root / "tests/cli-contract.json").read_bytes(), contract)
+        self.assertEqual(set(self.git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines()),
+                         {"template.json", "package.json"})
 
     def commit(self, message):
         self.git("add", "--", ".")
@@ -276,9 +317,11 @@ class ReleaseSourceTests(unittest.TestCase):
                 self.commit("restore source metadata")
 
     def test_mismatched_protocol_surface_fails_before_fetch_or_availability(self):
-        path = self.root / "tests/test_cli.py"
+        external = (self.root / "cli/asset-lock.json").exists()
+        path = self.root / ("tests/cli-contract.json" if external else "tests/test_cli.py")
         original = path.read_text()
-        changed = original.replace('"version":"0.1.0"', '"version":"9.9.9"')
+        changed = (original.replace("mesh-thumb 0.3.0\\n", "mesh-thumb 9.9.9\\n") if external else
+                   original.replace('"version":"0.1.0"', '"version":"9.9.9"'))
         self.assertNotEqual(changed, original)
         path.write_text(changed)
         self.commit("stale protocol assertion")

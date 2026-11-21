@@ -16,6 +16,15 @@ def source_digest(root):
         files.append(root / "workflow-contract.json")
     files += sorted(path for path in (root / "cli").rglob("*")
                     if path.is_file() and path.relative_to(root / "cli").parts[0] not in {"target", "build"})
+    if json.loads((root / "template.json").read_text()).get("cli_source") == "external-mesh-thumb-v1":
+        # The downloadable pinned release ZIP is the actual CLI input, bound through
+        # cli/asset-lock.json; the monorepo workflow lives above the component subtree.
+        files += sorted((root / "scripts").glob("*.py"))
+        workflow = root.parent / ".github/workflows/ci.yml"
+        if workflow.is_file():
+            files.append(workflow)
+        files += [root / relative for relative in (
+            "tests/test_cli.py", "tests/cli-contract.json", "tests/make_fixtures.py")]
     digest = hashlib.sha256()
     for path in files:
         if any(parent.is_symlink() for parent in [path, *path.parents]):
