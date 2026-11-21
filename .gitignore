@@ -9,3 +9,4 @@ dist/
 
 # local workaround for sandboxed HOME (read-only ~/.rustup)
 .rustup-home/
+component/MeshPreviewThumbnailer/tooling/compiler/Project/DerivedData/*
