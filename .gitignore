@@ -10,3 +10,4 @@ dist/
 # local workaround for sandboxed HOME (read-only ~/.rustup)
 .rustup-home/
 component/mesh/tooling/compiler/Project/DerivedData/*
+work/*
